@@ -19,7 +19,7 @@ export const rubricItems = [
   },
   {
     id: "context",
-    label: "背景（コンテキスト）",
+    label: "背景",
     maxScore: 4,
     description: "対象者、場面、前提情報が十分か"
   },
@@ -40,7 +40,7 @@ export const basicSteps = [
     shortTitle: "5観点で書く",
     estimatedMinutes: 5,
     focus: "",
-    principles: ["目的", "成功条件", "制約", "背景（コンテキスト）", "出力形式"],
+    principles: ["目的", "成功条件", "制約", "背景", "出力形式"],
     evaluationRubricIds: ["goal", "success", "constraints", "context", "output"],
     guide:
       "AI活用シーンを読み、何を作るか、よい回答の条件、避けたいこと、背景、返してほしい形を1つの依頼にまとめます。",
@@ -50,14 +50,14 @@ export const basicSteps = [
       "目的を書く",
       "成功条件を2つ以上書く",
       "制約や避けたいことを書く",
-      "背景（コンテキスト）を書く",
+      "背景を書く",
       "出力形式を書く"
     ],
     successChecklist: [
       "目的が明確",
       "成功条件が分かる",
       "制約が明確",
-      "背景（コンテキスト）が分かる",
+      "背景が分かる",
       "出力形式が指定されている"
     ],
     promptScenario:

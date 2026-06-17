@@ -12,6 +12,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
       ENABLE_MODEL_SWITCH: ${ENABLE_MODEL_SWITCH:-false}
       ALLOWED_MODELS: ${ALLOWED_MODELS:-gpt-4o-mini}
       USE_MOCK_LLM: ${USE_MOCK_LLM:-true}

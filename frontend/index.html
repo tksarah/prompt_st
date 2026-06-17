@@ -4,16 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>プロンプト練習</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/brand/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="./assets/brand/prompt-icon-192.png" />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark">P</div>
+          <div class="brand-mark" aria-hidden="true">
+            <img src="./assets/brand/prompt-icon-192.png" alt="" />
+          </div>
           <div>
-            <p class="eyebrow">15分版</p>
             <h1>プロンプト練習</h1>
+            <p class="guidance-link">
+              <a
+                href="https://developers.openai.com/api/docs/guides/prompt-guidance"
+                target="_blank"
+                rel="noreferrer"
+              >OpenAI API の Prompt guidance</a>
+              を参考にした練習です。
+            </p>
           </div>
         </div>
 
@@ -105,15 +116,20 @@
         </section>
 
         <section class="exercise-view" id="caseView" hidden>
-          <div class="case-choice-grid" id="caseCards" aria-label="実践ケース"></div>
-
           <section class="focus-panel case-focus">
             <div class="focus-copy">
-              <p class="eyebrow">ケーススタディ</p>
-              <h2 id="caseTitle">ケースを選択</h2>
-              <p id="caseFocus"></p>
+              <p class="eyebrow">実践</p>
+              <h2>実践ケースからプロンプトを書く</h2>
             </div>
           </section>
+
+          <ol class="practice-steps" aria-label="実践演習の進め方">
+            <li><span>1</span><strong>ケースを選ぶ</strong></li>
+            <li><span>2</span><strong>AI活用シーンを読む</strong></li>
+            <li><span>3</span><strong>プロンプトを書き実行する</strong></li>
+          </ol>
+
+          <div class="case-choice-grid" id="caseCards" aria-label="実践ケース"></div>
 
           <section class="work-panel">
             <div class="source-block">
@@ -125,7 +141,7 @@
               <p id="caseSourceText"></p>
             </div>
 
-            <details class="hint-details" open>
+            <details class="hint-details">
               <summary>プロンプト観点チェックリスト</summary>
               <ul class="case-checklist" id="caseChecklist"></ul>
             </details>

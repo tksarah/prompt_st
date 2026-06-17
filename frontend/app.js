@@ -1,3 +1,9 @@
+import {
+  getWeatherKeyFromPercentage,
+  getWeatherKeyFromRubricItem,
+  weatherMarks
+} from "./weather.js";
+
 const clientIdStorageKey = "promptPractice.clientId.v2";
 const historyLimit = 24;
 
@@ -25,8 +31,6 @@ const elements = {
   runBasicButton: document.getElementById("runBasicButton"),
   prevBasicButton: document.getElementById("prevBasicButton"),
   nextBasicButton: document.getElementById("nextBasicButton"),
-  caseTitle: document.getElementById("caseTitle"),
-  caseFocus: document.getElementById("caseFocus"),
   casePromptScenario: document.getElementById("casePromptScenario"),
   caseReferenceList: document.getElementById("caseReferenceList"),
   caseSourceText: document.getElementById("caseSourceText"),
@@ -68,24 +72,6 @@ const state = {
 
 let saveTimer = null;
 
-const weatherMarks = {
-  sunny: {
-    label: "晴れ",
-    message: "よくできています",
-    src: "./assets/weather/sunny.png"
-  },
-  cloudy: {
-    label: "くもり",
-    message: "もう少しです",
-    src: "./assets/weather/cloudy.png"
-  },
-  rainy: {
-    label: "雨",
-    message: "見直しましょう",
-    src: "./assets/weather/rainy.png"
-  }
-};
-
 function getOrCreateClientId() {
   const existingClientId = localStorage.getItem(clientIdStorageKey);
   if (existingClientId) {
@@ -109,31 +95,6 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function getWeatherKeyFromPercentage(percentage) {
-  const numericPercentage = Number(percentage);
-  if (!Number.isFinite(numericPercentage)) return null;
-  if (numericPercentage >= 75) return "sunny";
-  if (numericPercentage >= 50) return "cloudy";
-  return "rainy";
-}
-
-function getWeatherKeyFromRubricItem(item) {
-  const score = Number(item?.score);
-  const maxScore = Number(item?.maxScore);
-  if (!Number.isFinite(score) || !Number.isFinite(maxScore) || maxScore <= 0) return null;
-
-  if (maxScore === 4) {
-    if (score >= 3) return "sunny";
-    if (score >= 2) return "cloudy";
-    return "rainy";
-  }
-
-  const ratio = score / maxScore;
-  if (ratio >= 0.75) return "sunny";
-  if (ratio >= 0.5) return "cloudy";
-  return "rainy";
-}
-
 function createWeatherMark(key, { variant = "item", prefix = "" } = {}) {
   const weather = weatherMarks[key];
   if (!weather) return null;
@@ -153,13 +114,6 @@ function createWeatherMark(key, { variant = "item", prefix = "" } = {}) {
   image.decoding = "async";
   image.setAttribute("aria-hidden", "true");
   mark.appendChild(image);
-
-  if (variant === "overall") {
-    const text = document.createElement("span");
-    text.className = "weather-mark-copy";
-    text.textContent = `${weather.label}: ${weather.message}`;
-    mark.appendChild(text);
-  }
 
   return mark;
 }
@@ -415,6 +369,22 @@ function setRunning(isRunning, type = state.activeExerciseType) {
   }
 }
 
+function scrollToAssistantResult() {
+  const target = document.querySelector(".output-panel") || elements.resultSection;
+  if (!target) return;
+
+  const reducedMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  requestAnimationFrame(() => {
+    target.scrollIntoView({
+      behavior: reducedMotion ? "auto" : "smooth",
+      block: "start"
+    });
+  });
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -550,19 +520,26 @@ function renderCaseCards() {
   elements.caseCards.innerHTML = "";
   for (const caseStudy of state.caseStudies) {
     const latest = findLatestAttempt("case", caseStudy.id);
+    const isActive = caseStudy.id === state.activeCaseId;
     const button = document.createElement("button");
     button.type = "button";
     button.className = [
       "case-card",
-      caseStudy.id === state.activeCaseId ? "active" : "",
+      isActive ? "active" : "",
       latest?.score?.passed ? "passed" : ""
     ]
       .filter(Boolean)
       .join(" ");
+    button.setAttribute("aria-pressed", String(isActive));
+    button.setAttribute(
+      "aria-label",
+      `${caseStudy.shortTitle || caseStudy.title}${isActive ? "、選択中" : ""}${
+        latest ? "、実行済み" : ""
+      }`
+    );
     button.innerHTML = `
       <span class="case-title">${escapeHtml(caseStudy.shortTitle || caseStudy.title)}</span>
-      <span class="case-focus">${escapeHtml(caseStudy.focus)}</span>
-      ${latest ? '<span class="case-meta">実行済み</span>' : ""}
+      <span class="case-meta">${isActive ? "選択中" : latest ? "実行済み" : "選択"}</span>
     `;
     button.addEventListener("click", () => switchCase(caseStudy.id));
     elements.caseCards.appendChild(button);
@@ -652,8 +629,6 @@ function renderCaseContent() {
   const caseStudy = getCurrentCase();
   if (!caseStudy) return;
 
-  elements.caseTitle.textContent = caseStudy.title;
-  elements.caseFocus.textContent = caseStudy.focus;
   elements.casePromptScenario.textContent = caseStudy.promptScenario || caseStudy.sourceText;
   renderReferenceInfo({
     listElement: elements.caseReferenceList,
@@ -835,6 +810,7 @@ async function runAttempt(type) {
 
   syncPromptToDraft(type);
   setRunning(true, type);
+  scrollToAssistantResult();
 
   try {
     const data = await fetchJson("/api/attempts", {

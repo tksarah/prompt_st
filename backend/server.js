@@ -20,10 +20,10 @@ import {
   rubricItems
 } from "./lessons.js";
 
-dotenv.config();
-
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = dirname(currentFile);
+dotenv.config({ path: join(currentDir, "..", ".env") });
+
 const frontendDir = join(currentDir, "..", "frontend");
 const DEFAULT_HISTORY_TTL_MINUTES = 30;
 const SESSION_ARCHIVE_LIMIT = 24;
@@ -282,7 +282,7 @@ function buildCaseExercise(caseStudy) {
     promptScenario: caseStudy.promptScenario,
     referenceItems: caseStudy.referenceItems || [],
     sourceText: caseStudy.sourceText,
-    principles: ["目的", "成功条件", "制約", "背景（コンテキスト）", "出力形式"],
+    principles: ["目的", "成功条件", "制約", "背景", "出力形式"],
     checklist: caseStudy.checklist || [],
     nextAction:
       "ケーススタディの結果を見直し、自分の業務で使うテンプレートとして残してください。"
@@ -366,7 +366,7 @@ function buildEvaluationMessages({
     {
       role: "system",
       content:
-        "あなたは生成AI研修のプロンプト評価者です。OpenAIのプロンプト指針に沿って、明確な目的、成功条件、制約、背景（コンテキスト）、出力形式を評価します。必ずJSONオブジェクトのみを返してください。"
+        "あなたは生成AI研修のプロンプト評価者です。OpenAIのプロンプト指針に沿って、明確な目的、成功条件、制約、背景、出力形式を評価します。必ずJSONオブジェクトのみを返してください。"
     },
     {
       role: "user",
@@ -416,7 +416,6 @@ function createHeuristicEvaluation({ exercise, prompt }) {
     context: [
       "context",
       "背景",
-      "コンテキスト",
       "読み手",
       "対象",
       "利用場面",
