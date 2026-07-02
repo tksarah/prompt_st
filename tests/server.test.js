@@ -42,7 +42,7 @@ async function requestJson(path, options = {}) {
   return { response, data };
 }
 
-test("health and config expose basic steps and case studies", async () => {
+test("health and config expose hotel exercise groups", async () => {
   const health = await requestJson("/api/health");
   assert.equal(health.response.status, 200);
   assert.equal(health.data.ok, true);
@@ -51,30 +51,30 @@ test("health and config expose basic steps and case studies", async () => {
   assert.equal(config.response.status, 200);
   assert.equal(config.data.provider, "openai");
   assert.equal(config.data.mockMode, true);
-  assert.equal(config.data.basicSteps.length, 1);
-  assert.equal(config.data.caseStudies.length, 3);
-  assert.equal(config.data.lessons.length, 1);
-  assert.equal(config.data.rubricItems.length, 5);
-  assert.equal(config.data.basicSteps[0].id, "basic-core");
-  assert.equal(config.data.basicSteps[0].displayLabel, "基本");
-  assert.equal(config.data.basicSteps[0].estimatedMinutes, 5);
-  assert.match(config.data.basicSteps[0].promptScenario, /AIを活用しようとしています/);
-  assert.equal(typeof config.data.basicSteps[0].sourceText, "string");
-  assert.ok(config.data.basicSteps[0].sourceText.length > 0);
-  assert.ok(Array.isArray(config.data.basicSteps[0].referenceItems));
-  assert.ok(config.data.basicSteps[0].referenceItems.length > 0);
-  assert.ok(Array.isArray(config.data.basicSteps[0].principles));
-  assert.ok(Array.isArray(config.data.basicSteps[0].successChecklist));
-  assert.deepEqual(config.data.basicSteps[0].evaluationRubricIds, [
+  assert.equal(config.data.exerciseGroups.length, 2);
+  assert.deepEqual(
+    config.data.exerciseGroups.map((group) => group.id),
+    ["zero-shot", "few-shot"]
+  );
+  assert.ok(config.data.exerciseGroups.every((group) => group.exercises.length === 3));
+  assert.equal(config.data.rubricItems.length, 7);
+  assert.ok(config.data.exerciseGroups[0].exercises[0].promptScenario.includes("宿泊"));
+  assert.equal(config.data.exerciseGroups[0].exercises[0].examples.length, 0);
+  assert.equal(config.data.exerciseGroups[1].exercises[0].examples.length, 2);
+  assert.deepEqual(config.data.exerciseGroups[0].exercises[0].evaluationRubricIds, [
     "goal",
-    "success",
-    "constraints",
     "context",
-    "output"
+    "constraints",
+    "output",
+    "hospitality"
   ]);
-  assert.ok(Array.isArray(config.data.caseStudies[0].checklist));
-  assert.ok(config.data.caseStudies.every((caseStudy) => caseStudy.promptScenario));
-  assert.match(config.data.caseStudies[0].promptScenario, /AIを活用しようとしています/);
+  assert.deepEqual(config.data.exerciseGroups[1].exercises[0].evaluationRubricIds, [
+    "goal",
+    "examples",
+    "consistency",
+    "constraints",
+    "hospitality"
+  ]);
 });
 
 test("gemini-compatible config can use Gemini key and OPENAI_MODEL when model switch is off", async () => {
@@ -114,129 +114,94 @@ test("attempt endpoint validates required fields", async () => {
   const emptyPrompt = await requestJson("/api/attempts", {
     method: "POST",
     body: JSON.stringify({
-      exerciseType: "basic",
-      stepId: "basic-core",
+      exerciseType: "zero-shot",
+      exerciseId: "zero-prearrival-reply",
       prompt: ""
     })
   });
   assert.equal(emptyPrompt.response.status, 400);
   assert.equal(emptyPrompt.data.error, "prompt is required");
 
-  const invalidStep = await requestJson("/api/attempts", {
+  const invalidType = await requestJson("/api/attempts", {
     method: "POST",
     body: JSON.stringify({
-      exerciseType: "basic",
-      stepId: "missing",
-      prompt: "Goal: test"
+      exerciseType: "missing",
+      exerciseId: "zero-prearrival-reply",
+      prompt: "目的: テスト"
     })
   });
-  assert.equal(invalidStep.response.status, 400);
-  assert.equal(invalidStep.data.error, "stepId is invalid");
+  assert.equal(invalidType.response.status, 400);
+  assert.equal(invalidType.data.error, "exerciseType is invalid");
 
-  const invalidCase = await requestJson("/api/attempts", {
+  const invalidExercise = await requestJson("/api/attempts", {
     method: "POST",
     body: JSON.stringify({
-      exerciseType: "case",
-      caseId: "missing",
-      prompt: "Goal: test"
+      exerciseType: "few-shot",
+      exerciseId: "missing",
+      prompt: "目的: テスト"
     })
   });
-  assert.equal(invalidCase.response.status, 400);
-  assert.equal(invalidCase.data.error, "caseId is invalid");
+  assert.equal(invalidExercise.response.status, 400);
+  assert.equal(invalidExercise.data.error, "exerciseId is invalid");
 
-  const invalidLegacyLesson = await requestJson("/api/attempts", {
+  const missingType = await requestJson("/api/attempts", {
     method: "POST",
     body: JSON.stringify({
-      lessonId: "missing",
-      prompt: "Goal: test"
+      prompt: "目的: テスト"
     })
   });
-  assert.equal(invalidLegacyLesson.response.status, 400);
-  assert.equal(invalidLegacyLesson.data.error, "lessonId is invalid");
+  assert.equal(missingType.response.status, 400);
+  assert.equal(missingType.data.error, "exerciseType is required");
 });
 
 test("attempt execution sends only the learner prompt to the assistant", async () => {
   const result = await requestJson("/api/attempts", {
     method: "POST",
     body: JSON.stringify({
-      exerciseType: "basic",
-      stepId: "basic-core",
-      prompt: "Goal: テスト用に短く返してください。",
+      exerciseType: "zero-shot",
+      exerciseId: "zero-prearrival-reply",
+      prompt: "目的: テスト用に短く返してください。",
       model: "mock-model"
     })
   });
 
   assert.equal(result.response.status, 200);
-  assert.match(result.data.assistantReply, /Goal: テスト用に短く返してください。/);
-  assert.doesNotMatch(result.data.assistantReply, /演習シーン/);
-  assert.doesNotMatch(result.data.assistantReply, /利用場面/);
-  assert.doesNotMatch(result.data.assistantReply, /材料:/);
-  assert.doesNotMatch(result.data.assistantReply, /受講者のプロンプト/);
+  assert.match(result.data.assistantReply, /目的: テスト用に短く返してください。/);
+  assert.doesNotMatch(result.data.assistantReply, /宿泊予定のお客様/);
+  assert.doesNotMatch(result.data.assistantReply, /チェックイン前の荷物預かり/);
+  assert.doesNotMatch(result.data.assistantReply, /まねてほしい例/);
 });
 
-test("all basic exercises can run in mock mode with evaluation", async () => {
+test("all zero-shot and few-shot exercises can run in mock mode with evaluation", async () => {
   const { data: config } = await requestJson("/api/config");
-  const expectedRubricIds = ["goal", "success", "constraints", "context", "output"];
 
-  for (const step of config.basicSteps) {
-    const result = await requestJson("/api/attempts", {
-      method: "POST",
-      body: JSON.stringify({
-        exerciseType: "basic",
-        stepId: step.id,
-        prompt: step.starterPrompt,
-        model: "other-model"
-      })
-    });
+  for (const group of config.exerciseGroups) {
+    for (const exercise of group.exercises) {
+      const result = await requestJson("/api/attempts", {
+        method: "POST",
+        body: JSON.stringify({
+          exerciseType: group.id,
+          exerciseId: exercise.id,
+          prompt: exercise.starterPrompt,
+          model: "other-model"
+        })
+      });
 
-    assert.equal(result.response.status, 200);
-    assert.equal(result.data.exerciseType, "basic");
-    assert.equal(result.data.stepId, step.id);
-    assert.equal(result.data.lessonId, step.id);
-    assert.equal(result.data.model, "other-model");
-    assert.ok(result.data.assistantReply.length > 0);
-    assert.equal(step.id, "basic-core");
-    assert.deepEqual(step.evaluationRubricIds, expectedRubricIds);
-    assert.deepEqual(
-      result.data.evaluation.items.map((item) => item.id),
-      expectedRubricIds
-    );
-    assert.equal(typeof result.data.evaluation.bestPoint, "string");
-    assert.equal(typeof result.data.evaluation.priorityFix, "string");
-    assert.equal(result.data.score.max, 20);
-    assert.equal(typeof result.data.revisionHint, "string");
-  }
-});
-
-test("all case studies can run in mock mode with evaluation", async () => {
-  const { data: config } = await requestJson("/api/config");
-  const expectedRubricIds = ["goal", "success", "constraints", "context", "output"];
-
-  for (const caseStudy of config.caseStudies) {
-    const result = await requestJson("/api/attempts", {
-      method: "POST",
-      body: JSON.stringify({
-        exerciseType: "case",
-        caseId: caseStudy.id,
-        prompt: caseStudy.starterPrompt,
-        model: "other-model"
-      })
-    });
-
-    assert.equal(result.response.status, 200);
-    assert.equal(result.data.exerciseType, "case");
-    assert.equal(result.data.caseId, caseStudy.id);
-    assert.equal(result.data.lessonId, caseStudy.id);
-    assert.equal(result.data.model, "other-model");
-    assert.ok(result.data.assistantReply.length > 0);
-    assert.deepEqual(
-      result.data.evaluation.items.map((item) => item.id),
-      expectedRubricIds
-    );
-    assert.equal(typeof result.data.evaluation.bestPoint, "string");
-    assert.equal(typeof result.data.evaluation.priorityFix, "string");
-    assert.equal(result.data.score.max, 20);
-    assert.equal(typeof result.data.revisionHint, "string");
+      assert.equal(result.response.status, 200);
+      assert.equal(result.data.exerciseType, group.id);
+      assert.equal(result.data.exerciseId, exercise.id);
+      assert.equal(result.data.lessonId, exercise.id);
+      assert.equal(result.data.model, "other-model");
+      assert.ok(result.data.assistantReply.length > 0);
+      assert.deepEqual(
+        result.data.evaluation.items.map((item) => item.id),
+        exercise.evaluationRubricIds
+      );
+      assert.equal(typeof result.data.evaluation.bestPoint, "string");
+      assert.equal(typeof result.data.evaluation.priorityFix, "string");
+      assert.equal(result.data.score.max, 20);
+      assert.equal(typeof result.data.revisionHint, "string");
+    }
   }
 });
 
@@ -262,35 +227,38 @@ test("history can be saved, loaded, and deleted by clientId", async () => {
   const save = await requestJson(`/api/history?clientId=${clientId}`, {
     method: "PUT",
     body: JSON.stringify({
-      activeExerciseType: "basic",
-      activeStepId: "basic-core",
-      activeCaseId: "case-meeting",
+      activeExerciseType: "few-shot",
+      activeExerciseId: "few-faq-tone",
       attempts: [
         {
           id: "attempt-1",
-          exerciseType: "basic",
-          stepId: "basic-core",
-          prompt: "Goal: summarize",
+          exerciseType: "few-shot",
+          exerciseId: "few-faq-tone",
+          prompt: "目的: FAQを作る",
           assistantReply: "ok",
           createdAt: Date.now(),
           score: { percentage: 80, passed: true }
         }
       ],
       promptDrafts: {
-        "basic:basic-core": "Goal: summarize"
+        "few-shot:few-faq-tone": "目的: FAQを作る"
+      },
+      reflectionNotes: {
+        "few-shot:few-faq-tone": "例と同じ型を指定する。"
       }
     })
   });
   assert.equal(save.response.status, 200);
-  assert.equal(save.data.activeExerciseType, "basic");
-  assert.equal(save.data.activeStepId, "basic-core");
-  assert.equal(save.data.activeCaseId, "case-meeting");
+  assert.equal(save.data.activeExerciseType, "few-shot");
+  assert.equal(save.data.activeExerciseId, "few-faq-tone");
+  assert.equal(save.data.activeCaseId, "few-faq-tone");
   assert.equal(save.data.attempts.length, 1);
 
   const load = await requestJson(`/api/history?clientId=${clientId}`);
   assert.equal(load.response.status, 200);
   assert.equal(load.data.attempts.length, 1);
-  assert.equal(load.data.promptDrafts["basic:basic-core"], "Goal: summarize");
+  assert.equal(load.data.promptDrafts["few-shot:few-faq-tone"], "目的: FAQを作る");
+  assert.equal(load.data.reflectionNotes["few-shot:few-faq-tone"], "例と同じ型を指定する。");
 
   const clear = await requestJson(`/api/history?clientId=${clientId}`, { method: "DELETE" });
   assert.equal(clear.response.status, 200);
@@ -301,7 +269,7 @@ test("history can be saved, loaded, and deleted by clientId", async () => {
   assert.equal(afterClear.data.attempts.length, 0);
 });
 
-test("old lesson history falls back to basic step 1 and drops old attempts", async () => {
+test("old lesson history falls back to the first zero-shot exercise and drops old attempts", async () => {
   const clientId = "old-history-client";
   const save = await requestJson(`/api/history?clientId=${clientId}`, {
     method: "PUT",
@@ -326,15 +294,15 @@ test("old lesson history falls back to basic step 1 and drops old attempts", asy
   });
 
   assert.equal(save.response.status, 200);
-  assert.equal(save.data.activeExerciseType, "basic");
-  assert.equal(save.data.activeStepId, "basic-core");
-  assert.equal(save.data.activeLessonId, "basic-core");
+  assert.equal(save.data.activeExerciseType, "zero-shot");
+  assert.equal(save.data.activeExerciseId, "zero-prearrival-reply");
+  assert.equal(save.data.activeStepId, "zero-prearrival-reply");
   assert.equal(save.data.attempts.length, 0);
   assert.deepEqual(save.data.promptDrafts, {});
 
   const load = await requestJson(`/api/history?clientId=${clientId}`);
   assert.equal(load.response.status, 200);
-  assert.equal(load.data.activeExerciseType, "basic");
-  assert.equal(load.data.activeStepId, "basic-core");
+  assert.equal(load.data.activeExerciseType, "zero-shot");
+  assert.equal(load.data.activeExerciseId, "zero-prearrival-reply");
   assert.equal(load.data.attempts.length, 0);
 });

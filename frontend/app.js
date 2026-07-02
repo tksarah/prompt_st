@@ -4,67 +4,51 @@ import {
   weatherMarks
 } from "./weather.js";
 
-const clientIdStorageKey = "promptPractice.clientId.v2";
+const clientIdStorageKey = "hotelPromptPractice.clientId.v1";
 const historyLimit = 24;
 
 const elements = {
-  basicTab: document.getElementById("basicTab"),
-  caseTab: document.getElementById("caseTab"),
-  basicView: document.getElementById("basicView"),
-  caseView: document.getElementById("caseView"),
-  basicStepNav: document.getElementById("basicStepNav"),
-  caseCards: document.getElementById("caseCards"),
+  zeroTab: document.getElementById("zeroTab"),
+  fewTab: document.getElementById("fewTab"),
   clearHistoryButton: document.getElementById("clearHistoryButton"),
-  statusPill: document.getElementById("statusPill"),
-  basicKicker: document.getElementById("basicKicker"),
-  basicTitle: document.getElementById("basicTitle"),
-  basicFocus: document.getElementById("basicFocus"),
-  basicPromptScenario: document.getElementById("basicPromptScenario"),
-  basicReferenceList: document.getElementById("basicReferenceList"),
-  basicSourceText: document.getElementById("basicSourceText"),
-  basicPrincipleList: document.getElementById("basicPrincipleList"),
-  basicChecklist: document.getElementById("basicChecklist"),
-  basicBadExample: document.getElementById("basicBadExample"),
-  basicHint: document.getElementById("basicHint"),
-  basicPromptInput: document.getElementById("basicPromptInput"),
-  useBasicStarterButton: document.getElementById("useBasicStarterButton"),
-  runBasicButton: document.getElementById("runBasicButton"),
-  prevBasicButton: document.getElementById("prevBasicButton"),
-  nextBasicButton: document.getElementById("nextBasicButton"),
-  casePromptScenario: document.getElementById("casePromptScenario"),
-  caseReferenceList: document.getElementById("caseReferenceList"),
-  caseSourceText: document.getElementById("caseSourceText"),
-  caseChecklist: document.getElementById("caseChecklist"),
-  casePromptInput: document.getElementById("casePromptInput"),
-  useCaseStarterButton: document.getElementById("useCaseStarterButton"),
-  runCaseButton: document.getElementById("runCaseButton"),
-  copyPromptButton: document.getElementById("copyPromptButton"),
-  exportPdfButton: document.getElementById("exportPdfButton"),
-  exportTextButton: document.getElementById("exportTextButton"),
-  exportJsonButton: document.getElementById("exportJsonButton"),
-  exportCsvButton: document.getElementById("exportCsvButton"),
+  exerciseTypeLabel: document.getElementById("exerciseTypeLabel"),
+  exerciseTitle: document.getElementById("exerciseTitle"),
+  exerciseFocus: document.getElementById("exerciseFocus"),
+  exerciseSelect: document.getElementById("exerciseSelect"),
+  promptScenario: document.getElementById("promptScenario"),
+  referenceList: document.getElementById("referenceList"),
+  sourceText: document.getElementById("sourceText"),
+  examplesSection: document.getElementById("examplesSection"),
+  examplesList: document.getElementById("examplesList"),
+  principleList: document.getElementById("principleList"),
+  checklist: document.getElementById("checklist"),
+  badExample: document.getElementById("badExample"),
+  hintText: document.getElementById("hintText"),
+  promptInput: document.getElementById("promptInput"),
+  useStarterButton: document.getElementById("useStarterButton"),
+  runButton: document.getElementById("runButton"),
   resultSection: document.getElementById("resultSection"),
+  statusPill: document.getElementById("statusPill"),
   assistantOutput: document.getElementById("assistantOutput"),
-  scoreSummary: document.getElementById("scoreSummary"),
+  overallWeatherMark: document.getElementById("overallWeatherMark"),
   bestPoint: document.getElementById("bestPoint"),
   priorityFix: document.getElementById("priorityFix"),
   revisionHint: document.getElementById("revisionHint"),
-  overallWeatherMark: document.getElementById("overallWeatherMark"),
-  basicRubricFeedback: document.getElementById("basicRubricFeedback")
+  scoreSummary: document.getElementById("scoreSummary"),
+  rubricFeedback: document.getElementById("rubricFeedback"),
+  reflectionInput: document.getElementById("reflectionInput"),
+  exportPdfButton: document.getElementById("exportPdfButton")
 };
 
 const state = {
   clientId: getOrCreateClientId(),
   config: null,
-  basicSteps: [],
-  caseStudies: [],
-  rubricItems: [],
-  activeExerciseType: "basic",
-  activeStepId: "",
-  activeCaseId: "",
+  exerciseGroups: [],
+  activeExerciseType: "zero-shot",
+  activeExerciseId: "",
   attempts: [],
-  chatMessages: [],
   promptDrafts: {},
+  reflectionNotes: {},
   currentAttempt: null,
   selectedModel: "",
   isRunning: false
@@ -87,7 +71,7 @@ function getOrCreateClientId() {
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -95,119 +79,11 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function createWeatherMark(key, { variant = "item", prefix = "" } = {}) {
-  const weather = weatherMarks[key];
-  if (!weather) return null;
-
-  const mark = document.createElement("span");
-  mark.className = `weather-mark weather-mark-${variant} weather-mark-${key}`;
-  mark.title = weather.message;
-  mark.setAttribute(
-    "aria-label",
-    `${prefix ? `${prefix}: ` : ""}${weather.label}、${weather.message}`
-  );
-
-  const image = document.createElement("img");
-  image.src = weather.src;
-  image.alt = "";
-  image.loading = "lazy";
-  image.decoding = "async";
-  image.setAttribute("aria-hidden", "true");
-  mark.appendChild(image);
-
-  return mark;
-}
-
-function renderOverallWeatherMark(evaluation) {
-  elements.overallWeatherMark.replaceChildren();
-
-  const fallbackPercentage =
-    Number.isFinite(Number(evaluation?.total)) &&
-    Number.isFinite(Number(evaluation?.max)) &&
-    Number(evaluation.max) > 0
-      ? Math.round((Number(evaluation.total) / Number(evaluation.max)) * 100)
-      : null;
-  const weatherKey = getWeatherKeyFromPercentage(evaluation?.percentage ?? fallbackPercentage);
-  const mark = createWeatherMark(weatherKey, {
-    variant: "overall",
-    prefix: "全体"
-  });
-
-  if (!mark) {
-    elements.overallWeatherMark.hidden = true;
-    return;
-  }
-
-  elements.overallWeatherMark.hidden = false;
-  elements.overallWeatherMark.appendChild(mark);
-}
-
-function clearOverallWeatherMark() {
-  elements.overallWeatherMark.replaceChildren();
-  elements.overallWeatherMark.hidden = true;
-}
-
 function renderInlineMarkdown(text) {
-  return escapeHtml(text || "")
+  return escapeHtml(text)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<strong>$1</strong>");
-}
-
-function splitTableRow(line) {
-  let trimmed = String(line || "").trim();
-  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
-  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
-  return trimmed.split("|").map((cell) => cell.trim());
-}
-
-function looksLikeTableRow(line) {
-  return String(line || "").includes("|") && splitTableRow(line).length > 1;
-}
-
-function isTableSeparator(line) {
-  const cells = splitTableRow(line);
-  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s/g, "")));
-}
-
-function renderMarkdownTable(lines, startIndex) {
-  const headers = splitTableRow(lines[startIndex]);
-  const rows = [];
-  let index = startIndex + 2;
-
-  while (index < lines.length && looksLikeTableRow(lines[index]) && lines[index].trim()) {
-    if (!isTableSeparator(lines[index])) {
-      rows.push(splitTableRow(lines[index]));
-    }
-    index += 1;
-  }
-
-  const headerMarkup = headers
-    .map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`)
-    .join("");
-  const rowMarkup = rows
-    .map(
-      (row) =>
-        `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`
-    )
-    .join("");
-
-  return {
-    html: `<div class="markdown-table-wrap"><table><thead><tr>${headerMarkup}</tr></thead><tbody>${rowMarkup}</tbody></table></div>`,
-    nextIndex: index
-  };
-}
-
-function isBlockStart(line, nextLine = "") {
-  const trimmed = String(line || "").trim();
-  return (
-    /^```/.test(trimmed) ||
-    /^#{1,6}\s+/.test(trimmed) ||
-    /^([-*_])\1\1+$/.test(trimmed) ||
-    /^[-*+]\s+/.test(trimmed) ||
-    /^\d+[.)]\s+/.test(trimmed) ||
-    (looksLikeTableRow(trimmed) && isTableSeparator(nextLine))
-  );
 }
 
 function renderMarkdownOutput(text) {
@@ -216,43 +92,10 @@ function renderMarkdownOutput(text) {
   let index = 0;
 
   while (index < lines.length) {
-    const line = lines[index];
-    const trimmed = line.trim();
+    const trimmed = lines[index].trim();
 
     if (!trimmed) {
       index += 1;
-      continue;
-    }
-
-    if (/^```/.test(trimmed)) {
-      const codeLines = [];
-      index += 1;
-      while (index < lines.length && !/^```/.test(lines[index].trim())) {
-        codeLines.push(lines[index]);
-        index += 1;
-      }
-      if (index < lines.length) index += 1;
-      blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
-      continue;
-    }
-
-    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
-    if (headingMatch) {
-      blocks.push(`<h4>${renderInlineMarkdown(headingMatch[2])}</h4>`);
-      index += 1;
-      continue;
-    }
-
-    if (/^([-*_])\1\1+$/.test(trimmed)) {
-      blocks.push("<hr />");
-      index += 1;
-      continue;
-    }
-
-    if (looksLikeTableRow(trimmed) && index + 1 < lines.length && isTableSeparator(lines[index + 1])) {
-      const renderedTable = renderMarkdownTable(lines, index);
-      blocks.push(renderedTable.html);
-      index = renderedTable.nextIndex;
       continue;
     }
 
@@ -276,12 +119,21 @@ function renderMarkdownOutput(text) {
       continue;
     }
 
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (headingMatch) {
+      blocks.push(`<h4>${renderInlineMarkdown(headingMatch[2])}</h4>`);
+      index += 1;
+      continue;
+    }
+
     const paragraphLines = [trimmed];
     index += 1;
     while (
       index < lines.length &&
       lines[index].trim() &&
-      !isBlockStart(lines[index], lines[index + 1] || "")
+      !/^[-*+]\s+/.test(lines[index].trim()) &&
+      !/^\d+[.)]\s+/.test(lines[index].trim()) &&
+      !/^#{1,4}\s+/.test(lines[index].trim())
     ) {
       paragraphLines.push(lines[index].trim());
       index += 1;
@@ -289,100 +141,90 @@ function renderMarkdownOutput(text) {
     blocks.push(`<p>${renderInlineMarkdown(paragraphLines.join(" "))}</p>`);
   }
 
-  return blocks.join("");
+  return blocks.join("") || '<p class="empty-text">AIの回答はまだありません。</p>';
 }
 
-function getCurrentStep() {
-  return (
-    state.basicSteps.find((step) => step.id === state.activeStepId) || state.basicSteps[0] || null
+function createWeatherBadge(key, { variant = "overall", prefix = "" } = {}) {
+  const weather = weatherMarks[key];
+  if (!weather) return null;
+
+  const badge = document.createElement("span");
+  badge.className = `weather-badge weather-badge-${variant} weather-badge-${key}`;
+  badge.title = weather.message;
+  badge.setAttribute(
+    "aria-label",
+    `${prefix ? `${prefix}: ` : ""}${weather.label}、${weather.message}`
   );
+
+  const image = document.createElement("img");
+  image.src = weather.src;
+  image.alt = "";
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.setAttribute("aria-hidden", "true");
+
+  const text = document.createElement("span");
+  text.textContent = variant === "overall" ? `${weather.label} - ${weather.message}` : weather.label;
+
+  badge.append(image, text);
+  return badge;
 }
 
-function getCurrentStepIndex() {
-  const index = state.basicSteps.findIndex((step) => step.id === state.activeStepId);
-  return index >= 0 ? index : 0;
-}
+function renderOverallWeatherMark(evaluation) {
+  elements.overallWeatherMark.replaceChildren();
 
-function getCurrentCase() {
-  return (
-    state.caseStudies.find((caseStudy) => caseStudy.id === state.activeCaseId) ||
-    state.caseStudies[0] ||
-    null
-  );
-}
+  const fallbackPercentage =
+    Number.isFinite(Number(evaluation?.total)) &&
+    Number.isFinite(Number(evaluation?.max)) &&
+    Number(evaluation.max) > 0
+      ? Math.round((Number(evaluation.total) / Number(evaluation.max)) * 100)
+      : null;
+  const weatherKey = getWeatherKeyFromPercentage(evaluation?.percentage ?? fallbackPercentage);
+  const mark = createWeatherBadge(weatherKey, {
+    variant: "overall",
+    prefix: "全体"
+  });
 
-function getActiveId(type = state.activeExerciseType) {
-  return type === "case" ? state.activeCaseId : state.activeStepId;
-}
-
-function getDraftKey(type = state.activeExerciseType, id = getActiveId(type)) {
-  return `${type}:${id}`;
-}
-
-function getPromptElement(type = state.activeExerciseType) {
-  return type === "case" ? elements.casePromptInput : elements.basicPromptInput;
-}
-
-function getStarterPrompt(type = state.activeExerciseType, id = getActiveId(type)) {
-  if (type === "case") {
-    return state.caseStudies.find((caseStudy) => caseStudy.id === id)?.starterPrompt || "";
+  if (!mark) {
+    elements.overallWeatherMark.hidden = true;
+    return;
   }
-  return state.basicSteps.find((step) => step.id === id)?.starterPrompt || "";
+
+  elements.overallWeatherMark.hidden = false;
+  elements.overallWeatherMark.appendChild(mark);
+}
+
+function clearOverallWeatherMark() {
+  elements.overallWeatherMark.replaceChildren();
+  elements.overallWeatherMark.hidden = true;
 }
 
 function setStatus(text) {
-  if (elements.statusPill) {
-    elements.statusPill.textContent = text;
-  }
+  elements.statusPill.textContent = text;
 }
 
-function setRunning(isRunning, type = state.activeExerciseType) {
+function setRunning(isRunning) {
   state.isRunning = isRunning;
   for (const control of [
-    elements.runBasicButton,
-    elements.runCaseButton,
-    elements.basicPromptInput,
-    elements.casePromptInput,
-    elements.useBasicStarterButton,
-    elements.useCaseStarterButton,
-    elements.prevBasicButton,
-    elements.nextBasicButton,
-    elements.basicTab,
-    elements.caseTab
+    elements.zeroTab,
+    elements.fewTab,
+    elements.exerciseSelect,
+    elements.promptInput,
+    elements.useStarterButton,
+    elements.runButton,
+    elements.clearHistoryButton
   ]) {
     control.disabled = isRunning;
   }
-  for (const button of document.querySelectorAll(".step-button, .case-card")) {
-    button.disabled = isRunning;
-  }
 
-  elements.runBasicButton.textContent =
-    isRunning && type === "basic" ? "実行中..." : "このプロンプトで実行";
-  elements.runCaseButton.textContent =
-    isRunning && type === "case" ? "実行中..." : "このプロンプトで実行";
+  elements.runButton.textContent = isRunning ? "実行中..." : "このプロンプトで実行";
 
   if (isRunning) {
     elements.resultSection.hidden = false;
     elements.assistantOutput.innerHTML =
-      '<p class="loading">AI出力と評価を作成しています...</p>';
+      '<p class="loading">AI出力と改善コメントを作成しています...</p>';
     setStatus("実行中");
   }
-}
-
-function scrollToAssistantResult() {
-  const target = document.querySelector(".output-panel") || elements.resultSection;
-  if (!target) return;
-
-  const reducedMotion =
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  requestAnimationFrame(() => {
-    target.scrollIntoView({
-      behavior: reducedMotion ? "auto" : "smooth",
-      block: "start"
-    });
-  });
 }
 
 async function fetchJson(url, options = {}) {
@@ -401,44 +243,45 @@ function getHistoryEndpoint() {
   return `/api/history?clientId=${encodeURIComponent(state.clientId)}`;
 }
 
-async function loadHistory() {
-  try {
-    const data = await fetchJson(getHistoryEndpoint());
-    state.activeExerciseType = data.activeExerciseType === "case" ? "case" : "basic";
-    state.activeStepId = state.basicSteps.some((step) => step.id === data.activeStepId)
-      ? data.activeStepId
-      : state.basicSteps[0]?.id || "";
-    state.activeCaseId = state.caseStudies.some((caseStudy) => caseStudy.id === data.activeCaseId)
-      ? data.activeCaseId
-      : state.caseStudies[0]?.id || "";
-    state.attempts = Array.isArray(data.attempts) ? data.attempts : [];
-    state.chatMessages = Array.isArray(data.chatMessages) ? data.chatMessages : [];
-    state.promptDrafts =
-      data.promptDrafts && typeof data.promptDrafts === "object" ? data.promptDrafts : {};
-  } catch {
-    state.activeExerciseType = "basic";
-    state.activeStepId = state.basicSteps[0]?.id || "";
-    state.activeCaseId = state.caseStudies[0]?.id || "";
-    state.attempts = [];
-    state.chatMessages = [];
-    state.promptDrafts = {};
-  }
+function getCurrentGroup() {
+  return state.exerciseGroups.find((group) => group.id === state.activeExerciseType) || null;
 }
 
-async function saveHistory() {
-  await fetchJson(getHistoryEndpoint(), {
-    method: "PUT",
-    body: JSON.stringify({
-      activeExerciseType: state.activeExerciseType,
-      activeStepId: state.activeStepId,
-      activeCaseId: state.activeCaseId,
-      attempts: state.attempts.slice(0, historyLimit),
-      chatMessages: state.chatMessages,
-      promptDrafts: state.promptDrafts
-    })
-  }).catch((error) => {
-    console.error(error);
-  });
+function getCurrentExercise() {
+  const group = getCurrentGroup();
+  return group?.exercises.find((exercise) => exercise.id === state.activeExerciseId) || null;
+}
+
+function getDraftKey(type = state.activeExerciseType, id = state.activeExerciseId) {
+  return `${type}:${id}`;
+}
+
+function syncPromptToDraft() {
+  if (!state.activeExerciseId) return;
+  state.promptDrafts[getDraftKey()] = elements.promptInput.value;
+}
+
+function syncReflectionToDraft() {
+  if (!state.activeExerciseId) return;
+  state.reflectionNotes[getDraftKey()] = elements.reflectionInput.value;
+}
+
+function loadPromptForActive() {
+  const draft = state.promptDrafts[getDraftKey()];
+  elements.promptInput.value = typeof draft === "string" ? draft : "";
+}
+
+function loadReflectionForActive() {
+  const reflection = state.reflectionNotes[getDraftKey()];
+  elements.reflectionInput.value = typeof reflection === "string" ? reflection : "";
+}
+
+function findLatestAttempt(type = state.activeExerciseType, id = state.activeExerciseId) {
+  return (
+    state.attempts.find(
+      (attempt) => attempt.exerciseType === type && attempt.exerciseId === id
+    ) || null
+  );
 }
 
 function scheduleSaveHistory() {
@@ -448,106 +291,138 @@ function scheduleSaveHistory() {
   }, 450);
 }
 
-function syncPromptToDraft(type = state.activeExerciseType) {
-  const id = getActiveId(type);
-  if (!id) return;
-  state.promptDrafts[getDraftKey(type, id)] = getPromptElement(type).value;
-}
-
-function loadPromptForActive() {
-  const type = state.activeExerciseType;
-  const id = getActiveId(type);
-  const draft = state.promptDrafts[getDraftKey(type, id)];
-  getPromptElement(type).value = typeof draft === "string" ? draft : "";
-}
-
-function findLatestAttempt(type = state.activeExerciseType, id = getActiveId(type)) {
-  return (
-    state.attempts.find((attempt) =>
-      type === "case"
-        ? attempt.exerciseType === "case" && attempt.caseId === id
-        : attempt.exerciseType === "basic" && attempt.stepId === id
-    ) || null
-  );
-}
-
-function getStepDisplayLabel(step) {
-  if (step?.displayLabel) {
-    return step.displayLabel;
+async function loadHistory() {
+  try {
+    const data = await fetchJson(getHistoryEndpoint());
+    const groupIds = new Set(state.exerciseGroups.map((group) => group.id));
+    state.activeExerciseType = groupIds.has(data.activeExerciseType)
+      ? data.activeExerciseType
+      : state.exerciseGroups[0]?.id || "zero-shot";
+    const group = getCurrentGroup();
+    state.activeExerciseId = group?.exercises.some((exercise) => exercise.id === data.activeExerciseId)
+      ? data.activeExerciseId
+      : group?.exercises[0]?.id || "";
+    state.attempts = Array.isArray(data.attempts) ? data.attempts : [];
+    state.promptDrafts =
+      data.promptDrafts && typeof data.promptDrafts === "object" ? data.promptDrafts : {};
+    state.reflectionNotes =
+      data.reflectionNotes && typeof data.reflectionNotes === "object" ? data.reflectionNotes : {};
+  } catch {
+    state.activeExerciseType = state.exerciseGroups[0]?.id || "zero-shot";
+    state.activeExerciseId = getCurrentGroup()?.exercises[0]?.id || "";
+    state.attempts = [];
+    state.promptDrafts = {};
+    state.reflectionNotes = {};
   }
-  return step?.step ? `STEP ${step.step}` : "基本";
+}
+
+async function saveHistory() {
+  await fetchJson(getHistoryEndpoint(), {
+    method: "PUT",
+    body: JSON.stringify({
+      activeExerciseType: state.activeExerciseType,
+      activeExerciseId: state.activeExerciseId,
+      attempts: state.attempts.slice(0, historyLimit),
+      promptDrafts: state.promptDrafts,
+      reflectionNotes: state.reflectionNotes
+    })
+  }).catch((error) => {
+    console.error(error);
+  });
 }
 
 function renderTabs() {
-  const isCase = state.activeExerciseType === "case";
-  elements.basicTab.classList.toggle("active", !isCase);
-  elements.caseTab.classList.toggle("active", isCase);
-  elements.basicTab.setAttribute("aria-selected", String(!isCase));
-  elements.caseTab.setAttribute("aria-selected", String(isCase));
-  elements.basicView.hidden = isCase;
-  elements.caseView.hidden = !isCase;
+  const isFewShot = state.activeExerciseType === "few-shot";
+  elements.zeroTab.classList.toggle("active", !isFewShot);
+  elements.fewTab.classList.toggle("active", isFewShot);
+  elements.zeroTab.setAttribute("aria-selected", String(!isFewShot));
+  elements.fewTab.setAttribute("aria-selected", String(isFewShot));
 }
 
-function renderBasicNav() {
-  elements.basicStepNav.innerHTML = "";
-  elements.basicStepNav.hidden = state.basicSteps.length <= 1;
-  if (elements.basicStepNav.hidden) {
+function renderExerciseSelect() {
+  const group = getCurrentGroup();
+  elements.exerciseSelect.replaceChildren();
+
+  for (const exercise of group?.exercises || []) {
+    const option = document.createElement("option");
+    option.value = exercise.id;
+    option.textContent = exercise.shortTitle || exercise.title;
+    option.selected = exercise.id === state.activeExerciseId;
+    elements.exerciseSelect.appendChild(option);
+  }
+}
+
+function renderReferenceInfo(exercise) {
+  const items = Array.isArray(exercise.referenceItems) ? exercise.referenceItems.filter(Boolean) : [];
+  elements.referenceList.replaceChildren();
+
+  if (!items.length) {
+    elements.referenceList.hidden = true;
     return;
   }
 
-  for (const step of state.basicSteps) {
-    const latest = findLatestAttempt("basic", step.id);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = [
-      "step-button",
-      step.id === state.activeStepId ? "active" : "",
-      latest ? "completed" : ""
-    ]
-      .filter(Boolean)
-      .join(" ");
-    button.innerHTML = `
-      <span class="step-number">${escapeHtml(getStepDisplayLabel(step))}</span>
-      <span class="step-title">${escapeHtml(step.shortTitle || step.title)}</span>
-      ${latest ? '<span class="step-status">実行済み</span>' : ""}
-    `;
-    button.addEventListener("click", () => switchBasicStep(step.id));
-    elements.basicStepNav.appendChild(button);
+  for (const item of items) {
+    const block = document.createElement("div");
+    block.className = "reference-item";
+
+    const label = document.createElement("p");
+    label.className = "reference-item-label";
+    label.textContent = item.label || "";
+
+    const value = document.createElement("p");
+    value.className = "reference-item-value";
+    value.textContent = item.value || "";
+
+    block.append(label, value);
+    elements.referenceList.appendChild(block);
   }
+  elements.referenceList.hidden = false;
 }
 
-function renderCaseCards() {
-  elements.caseCards.innerHTML = "";
-  for (const caseStudy of state.caseStudies) {
-    const latest = findLatestAttempt("case", caseStudy.id);
-    const isActive = caseStudy.id === state.activeCaseId;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = [
-      "case-card",
-      isActive ? "active" : "",
-      latest?.score?.passed ? "passed" : ""
-    ]
-      .filter(Boolean)
-      .join(" ");
-    button.setAttribute("aria-pressed", String(isActive));
-    button.setAttribute(
-      "aria-label",
-      `${caseStudy.shortTitle || caseStudy.title}${isActive ? "、選択中" : ""}${
-        latest ? "、実行済み" : ""
-      }`
-    );
-    button.innerHTML = `
-      <span class="case-title">${escapeHtml(caseStudy.shortTitle || caseStudy.title)}</span>
-      <span class="case-meta">${isActive ? "選択中" : latest ? "実行済み" : "選択"}</span>
-    `;
-    button.addEventListener("click", () => switchCase(caseStudy.id));
-    elements.caseCards.appendChild(button);
+function renderExamples(exercise) {
+  const examples = Array.isArray(exercise.examples) ? exercise.examples.filter(Boolean) : [];
+  elements.examplesList.replaceChildren();
+
+  if (!examples.length) {
+    elements.examplesSection.hidden = true;
+    return;
+  }
+
+  for (const example of examples) {
+    const block = document.createElement("article");
+    block.className = "example-item";
+
+    const label = document.createElement("p");
+    label.className = "example-label";
+    label.textContent = example.label || "例";
+
+    const input = document.createElement("p");
+    input.className = "example-copy";
+    input.textContent = `入力: ${example.input || ""}`;
+
+    const output = document.createElement("p");
+    output.className = "example-copy strong";
+    output.textContent = `出力: ${example.output || ""}`;
+
+    block.append(label, input, output);
+    elements.examplesList.appendChild(block);
+  }
+
+  elements.examplesSection.hidden = false;
+}
+
+function renderPrinciples(principles) {
+  elements.principleList.replaceChildren();
+  for (const principle of principles || []) {
+    const chip = document.createElement("span");
+    chip.className = "principle-chip";
+    chip.textContent = principle;
+    elements.principleList.appendChild(chip);
   }
 }
 
 function renderList(container, items) {
-  container.innerHTML = "";
+  container.replaceChildren();
   for (const text of items || []) {
     const item = document.createElement("li");
     item.textContent = text;
@@ -555,115 +430,51 @@ function renderList(container, items) {
   }
 }
 
-function renderReferenceInfo({ listElement, textElement, referenceItems, sourceText }) {
-  const items = Array.isArray(referenceItems) ? referenceItems.filter(Boolean) : [];
-  listElement.replaceChildren();
+function renderExerciseContent() {
+  const group = getCurrentGroup();
+  const exercise = getCurrentExercise();
+  if (!group || !exercise) return;
 
-  if (items.length) {
-    for (const item of items) {
-      const block = document.createElement("div");
-      block.className = "reference-item";
+  elements.exerciseTypeLabel.textContent = group.label;
+  elements.exerciseTitle.textContent = exercise.title;
+  elements.exerciseFocus.textContent = exercise.focus || group.description || "";
+  elements.promptScenario.textContent = exercise.promptScenario || "";
+  elements.sourceText.textContent = exercise.sourceText || "";
+  elements.badExample.textContent = exercise.badExample || "";
+  elements.hintText.textContent = exercise.hint || "";
 
-      const label = document.createElement("p");
-      label.className = "reference-item-label";
-      label.textContent = item.label || "";
-
-      const value = document.createElement("p");
-      value.className = "reference-item-value";
-      value.textContent = item.value || "";
-
-      block.append(label, value);
-      listElement.appendChild(block);
-    }
-    listElement.hidden = false;
-    textElement.hidden = true;
-    textElement.textContent = "";
-    return;
-  }
-
-  listElement.hidden = true;
-  textElement.hidden = false;
-  textElement.textContent = sourceText || "";
+  renderExerciseSelect();
+  renderReferenceInfo(exercise);
+  renderExamples(exercise);
+  renderPrinciples(exercise.principles || []);
+  renderList(elements.checklist, exercise.checklist || []);
 }
 
-function renderPrinciples(container, principles) {
-  container.innerHTML = "";
-  for (const principle of principles || []) {
-    const chip = document.createElement("span");
-    chip.className = "principle-chip";
-    chip.textContent = principle;
-    container.appendChild(chip);
-  }
-}
-
-function renderBasicContent() {
-  const step = getCurrentStep();
-  if (!step) return;
-
-  const index = getCurrentStepIndex();
-  const hasMultipleBasicSteps = state.basicSteps.length > 1;
-  const focusText = step.focus || "";
-  elements.basicKicker.textContent = getStepDisplayLabel(step);
-  elements.basicTitle.textContent = step.title;
-  elements.basicFocus.textContent = focusText;
-  elements.basicFocus.hidden = !focusText;
-  elements.basicPromptScenario.textContent = step.promptScenario || step.sourceText;
-  renderReferenceInfo({
-    listElement: elements.basicReferenceList,
-    textElement: elements.basicSourceText,
-    referenceItems: step.referenceItems,
-    sourceText: step.sourceText
-  });
-  elements.basicBadExample.textContent = step.badExample;
-  elements.basicHint.textContent = step.hint || step.guide || "";
-  renderPrinciples(elements.basicPrincipleList, step.principles);
-  renderList(elements.basicChecklist, step.successChecklist || step.improvementPoints);
-  elements.prevBasicButton.hidden = !hasMultipleBasicSteps;
-  elements.nextBasicButton.hidden = !hasMultipleBasicSteps;
-  elements.prevBasicButton.disabled = !hasMultipleBasicSteps || index === 0 || state.isRunning;
-  elements.nextBasicButton.disabled =
-    !hasMultipleBasicSteps || index >= state.basicSteps.length - 1 || state.isRunning;
-}
-
-function renderCaseContent() {
-  const caseStudy = getCurrentCase();
-  if (!caseStudy) return;
-
-  elements.casePromptScenario.textContent = caseStudy.promptScenario || caseStudy.sourceText;
-  renderReferenceInfo({
-    listElement: elements.caseReferenceList,
-    textElement: elements.caseSourceText,
-    referenceItems: caseStudy.referenceItems,
-    sourceText: caseStudy.sourceText
-  });
-  renderList(elements.caseChecklist, caseStudy.checklist);
-}
-
-function renderBasicRubricFeedback(items) {
-  const feedbackItems = (Array.isArray(items) ? items : items ? [items] : []).filter(Boolean);
-  elements.basicRubricFeedback.replaceChildren();
+function renderRubricFeedback(items) {
+  elements.rubricFeedback.replaceChildren();
+  const feedbackItems = (Array.isArray(items) ? items : []).filter(Boolean);
 
   if (!feedbackItems.length) {
-    elements.basicRubricFeedback.hidden = true;
+    const empty = document.createElement("p");
+    empty.className = "empty-text";
+    empty.textContent = "観点別コメントはまだありません。";
+    elements.rubricFeedback.appendChild(empty);
     return;
   }
 
-  const list = document.createElement("div");
-  list.className = "basic-feedback-list";
-
   for (const item of feedbackItems) {
-    const block = document.createElement("div");
-    block.className = "basic-feedback-item";
+    const block = document.createElement("section");
+    block.className = "rubric-item";
 
     const head = document.createElement("div");
-    head.className = "basic-feedback-head";
+    head.className = "rubric-item-head";
 
     const title = document.createElement("p");
-    title.className = "basic-focus-title";
+    title.className = "rubric-title";
     title.textContent = item.label || "観点";
-    head.append(title);
+    head.appendChild(title);
 
-    const weatherMark = createWeatherMark(getWeatherKeyFromRubricItem(item), {
+    const weatherMark = createWeatherBadge(getWeatherKeyFromRubricItem(item), {
       variant: "item",
       prefix: item.label || "観点"
     });
@@ -672,151 +483,106 @@ function renderBasicRubricFeedback(items) {
     }
 
     const reason = document.createElement("p");
-    reason.className = "feedback-card-copy";
-    const reasonLabel = document.createElement("span");
-    reasonLabel.className = "feedback-card-label";
-    reasonLabel.textContent = "現状";
-    reason.append(reasonLabel, document.createTextNode(item.reason || ""));
+    reason.className = "rubric-copy";
+    reason.textContent = `現状: ${item.reason || ""}`;
 
     const advice = document.createElement("p");
-    advice.className = "feedback-card-copy strong";
-    const adviceLabel = document.createElement("span");
-    adviceLabel.className = "feedback-card-label";
-    adviceLabel.textContent = "改善";
-    advice.append(adviceLabel, document.createTextNode(item.advice || ""));
+    advice.className = "rubric-copy strong";
+    advice.textContent = `改善: ${item.advice || ""}`;
 
     block.append(head, reason, advice);
-    list.appendChild(block);
+    elements.rubricFeedback.appendChild(block);
   }
-
-  elements.basicRubricFeedback.hidden = false;
-  elements.basicRubricFeedback.appendChild(list);
 }
 
 function renderFeedback() {
   const attempt = state.currentAttempt;
-  const evaluation = attempt?.evaluation;
 
   if (!attempt) {
     elements.resultSection.hidden = true;
-    elements.basicRubricFeedback.hidden = true;
     clearOverallWeatherMark();
+    elements.assistantOutput.innerHTML = "";
+    renderRubricFeedback([]);
     return;
   }
 
   elements.resultSection.hidden = false;
-  renderBasicRubricFeedback(null);
-  clearOverallWeatherMark();
+  elements.assistantOutput.innerHTML = renderMarkdownOutput(attempt.assistantReply || "");
 
-  if (attempt.evaluationError || !evaluation) {
-    elements.scoreSummary.textContent = "評価に失敗したため再実行してください。";
+  if (attempt.evaluationError || !attempt.evaluation) {
+    clearOverallWeatherMark();
     elements.bestPoint.textContent = "AI出力は表示されています。";
     elements.priorityFix.textContent = "採点だけ再実行してください。";
     elements.revisionHint.textContent =
       attempt.revisionHint || "評価に失敗したため再実行してください。";
-    renderBasicRubricFeedback({
-      label: "評価に失敗しました",
-      reason: "採点コメントを取得できませんでした。",
-      advice: "少し時間を置いて、もう一度実行してください。"
-    });
+    elements.scoreSummary.textContent = "評価に失敗したため、少し時間を置いて再実行してください。";
+    renderRubricFeedback([]);
     return;
   }
 
-  elements.scoreSummary.textContent = evaluation.summary;
-  renderOverallWeatherMark(evaluation);
+  renderOverallWeatherMark(attempt.evaluation);
   elements.bestPoint.textContent =
-    evaluation.bestPoint || "目的に沿ってプロンプトを書こうとしている点は良いです。";
+    attempt.evaluation.bestPoint || "ホテルの場面を意識して書けています。";
   elements.priorityFix.textContent =
-    evaluation.priorityFix || "最も低い採点項目を1つ選び、具体的な指定を追記してください。";
-  elements.revisionHint.textContent = evaluation.revisionHint || attempt.revisionHint || "";
-  renderBasicRubricFeedback(evaluation.items);
-}
-
-function renderAssistantOutput() {
-  const attempt = state.currentAttempt;
-  elements.assistantOutput.innerHTML = attempt ? renderMarkdownOutput(attempt.assistantReply || "") : "";
-}
-
-function renderModelOptions() {
-  const models = state.config?.models || [];
-  state.selectedModel = state.config?.selectedModel || models[0] || "";
+    attempt.evaluation.priorityFix || "不足している条件を1つ追記してください。";
+  elements.revisionHint.textContent =
+    attempt.evaluation.revisionHint || attempt.revisionHint || "修正して再実行してください。";
+  elements.scoreSummary.textContent = attempt.evaluation.summary || "";
+  renderRubricFeedback(attempt.evaluation.items || []);
 }
 
 function renderAll() {
   renderTabs();
-  renderBasicNav();
-  renderCaseCards();
-  renderBasicContent();
-  renderCaseContent();
-  renderAssistantOutput();
+  renderExerciseContent();
+  state.currentAttempt = findLatestAttempt();
+  loadReflectionForActive();
   renderFeedback();
 }
 
-function switchTab(type) {
+function switchExerciseType(type) {
+  if (state.activeExerciseType === type || state.isRunning) return;
+
   syncPromptToDraft();
+  syncReflectionToDraft();
   state.activeExerciseType = type;
-  state.currentAttempt = findLatestAttempt();
+  const group = getCurrentGroup();
+  state.activeExerciseId = group?.exercises[0]?.id || "";
   loadPromptForActive();
   renderAll();
   scheduleSaveHistory();
 }
 
-function switchBasicStep(stepId) {
+function switchExercise(exerciseId) {
+  if (state.activeExerciseId === exerciseId || state.isRunning) return;
+
   syncPromptToDraft();
-  const step = state.basicSteps.find((item) => item.id === stepId);
-  if (!step) return;
-
-  state.activeExerciseType = "basic";
-  state.activeStepId = step.id;
-  state.currentAttempt = findLatestAttempt("basic", step.id);
+  syncReflectionToDraft();
+  state.activeExerciseId = exerciseId;
   loadPromptForActive();
   renderAll();
   scheduleSaveHistory();
 }
 
-function switchCase(caseId) {
-  syncPromptToDraft();
-  const caseStudy = state.caseStudies.find((item) => item.id === caseId);
-  if (!caseStudy) return;
-
-  state.activeExerciseType = "case";
-  state.activeCaseId = caseStudy.id;
-  state.currentAttempt = findLatestAttempt("case", caseStudy.id);
-  loadPromptForActive();
-  renderAll();
-  scheduleSaveHistory();
-}
-
-function goToRelativeStep(offset) {
-  const currentIndex = getCurrentStepIndex();
-  const nextStep = state.basicSteps[currentIndex + offset];
-  if (nextStep) {
-    switchBasicStep(nextStep.id);
-  }
-}
-
-async function runAttempt(type) {
-  state.activeExerciseType = type;
-  const prompt = getPromptElement(type).value.trim();
-  const payload =
-    type === "case"
-      ? { exerciseType: "case", caseId: state.activeCaseId, prompt }
-      : { exerciseType: "basic", stepId: state.activeStepId, prompt };
+async function runAttempt() {
+  const prompt = elements.promptInput.value.trim();
 
   if (!prompt) {
     setStatus("プロンプト欄に入力してください");
     return;
   }
 
-  syncPromptToDraft(type);
-  setRunning(true, type);
-  scrollToAssistantResult();
+  syncPromptToDraft();
+  syncReflectionToDraft();
+  setRunning(true);
+  elements.resultSection.scrollIntoView({ behavior: "smooth", block: "start" });
 
   try {
     const data = await fetchJson("/api/attempts", {
       method: "POST",
       body: JSON.stringify({
-        ...payload,
+        exerciseType: state.activeExerciseType,
+        exerciseId: state.activeExerciseId,
+        prompt,
         model: state.selectedModel || undefined
       })
     });
@@ -827,7 +593,7 @@ async function runAttempt(type) {
       historyLimit
     );
     await saveHistory();
-    renderAll();
+    renderFeedback();
     setStatus(data.evaluationError ? "評価失敗" : "完了");
   } catch (error) {
     console.error(error);
@@ -835,64 +601,21 @@ async function runAttempt(type) {
     elements.assistantOutput.innerHTML = `<p class="empty-text">${escapeHtml(
       `実行に失敗しました: ${error.message}`
     )}</p>`;
+    clearOverallWeatherMark();
     setStatus("エラー");
   } finally {
-    setRunning(false, type);
-    renderBasicContent();
-    renderCaseContent();
+    setRunning(false);
   }
 }
 
-async function copyPrompt() {
-  const text = getPromptElement().value;
-  try {
-    await navigator.clipboard.writeText(text);
-    setStatus("コピーしました");
-  } catch {
-    const element = getPromptElement();
-    element.focus();
-    element.select();
-    document.execCommand("copy");
-    setStatus("コピーしました");
-  }
+function getExerciseTitle(attempt = state.currentAttempt) {
+  const group = state.exerciseGroups.find((item) => item.id === attempt?.exerciseType);
+  const exercise = group?.exercises.find((item) => item.id === attempt?.exerciseId);
+  return exercise?.title || "ホテルプロンプト練習";
 }
 
-function toCrlf(value) {
-  return String(value ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/\n/g, "\r\n");
-}
-
-function prepareDownloadContent(content, { bom = false, crlf = false } = {}) {
-  const normalized = crlf ? toCrlf(content) : String(content ?? "");
-  return bom ? `\ufeff${normalized}` : normalized;
-}
-
-function downloadFile({ filename, type, content, bom = false, crlf = false }) {
-  const blob = new Blob([prepareDownloadContent(content, { bom, crlf })], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function getReportTitle(attempt) {
-  if (attempt?.exerciseType === "case") {
-    const caseStudy = state.caseStudies.find((item) => item.id === attempt.caseId);
-    return caseStudy?.title || "実践演習";
-  }
-
-  const step = state.basicSteps.find((item) => item.id === attempt?.stepId);
-  return step?.title || "基本演習";
-}
-
-function getReportTypeLabel(attempt) {
-  return attempt?.exerciseType === "case" ? "実践演習" : "基本演習";
+function getReportTypeLabel(attempt = state.currentAttempt) {
+  return attempt?.exerciseType === "few-shot" ? "Few-Shot" : "Zero-Shot";
 }
 
 function getCurrentReportData() {
@@ -903,53 +626,16 @@ function getCurrentReportData() {
   return {
     exportedAt: new Date().toLocaleString("ja-JP"),
     exerciseType: getReportTypeLabel(attempt),
-    title: getReportTitle(attempt),
+    title: getExerciseTitle(attempt),
     prompt: attempt.prompt || "",
     assistantReply: attempt.assistantReply || "",
     bestPoint: evaluation.bestPoint || "",
     priorityFix: evaluation.priorityFix || "",
     summary: evaluation.summary || "",
     revisionHint: evaluation.revisionHint || attempt.revisionHint || "",
+    reflection: state.reflectionNotes[getDraftKey(attempt.exerciseType, attempt.exerciseId)] || "",
     items: Array.isArray(evaluation.items) ? evaluation.items : []
   };
-}
-
-function buildTextReport(report) {
-  const lines = [
-    "プロンプト練習 書き出し",
-    `書き出し日時: ${report.exportedAt}`,
-    `演習: ${report.exerciseType}`,
-    `タイトル: ${report.title}`,
-    "",
-    "【プロンプト】",
-    report.prompt || "（未入力）",
-    "",
-    "【AIの回答】",
-    report.assistantReply || "（回答なし）",
-    "",
-    "【プロンプト改善コメント】",
-    `良かった点: ${report.bestPoint || "（なし）"}`,
-    `次に直す1点: ${report.priorityFix || "（なし）"}`,
-    `サマリー: ${report.summary || "（なし）"}`,
-    `再実行のヒント: ${report.revisionHint || "（なし）"}`,
-    "",
-    "【5観点フィードバック】"
-  ];
-
-  if (report.items.length) {
-    report.items.forEach((item, index) => {
-      lines.push(
-        "",
-        `${index + 1}. ${item.label || "観点"}`,
-        `現状: ${item.reason || "（なし）"}`,
-        `改善: ${item.advice || "（なし）"}`
-      );
-    });
-  } else {
-    lines.push("（評価コメントなし）");
-  }
-
-  return lines.join("\n");
 }
 
 function reportTextBlock(value) {
@@ -977,163 +663,63 @@ function buildPrintReportHtml(report) {
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(report.title)} - プロンプト練習</title>
+    <title>${escapeHtml(report.title)} - ホテルプロンプト練習</title>
     <style>
-      body {
-        margin: 0;
-        color: #1c2430;
-        font-family: "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif;
-        line-height: 1.7;
-      }
-      main {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 28px;
-      }
-      h1 {
-        margin: 0 0 6px;
-        font-size: 24px;
-      }
-      h2 {
-        margin: 28px 0 10px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid #d8dee6;
-        font-size: 18px;
-      }
-      h3 {
-        margin: 0 0 8px;
-        font-size: 15px;
-      }
-      .print-meta {
-        margin: 0;
-        color: #5d6875;
-        font-size: 12px;
-      }
-      .print-text-block,
-      .print-card {
-        border: 1px solid #d8dee6;
-        border-radius: 8px;
-        background: #fafbfc;
-      }
-      .print-text-block {
-        padding: 12px;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-      .print-card {
-        break-inside: avoid;
-        margin: 10px 0;
-        padding: 12px;
-      }
-      .print-card p {
-        margin: 8px 0 4px;
-      }
-      @media print {
-        main {
-          padding: 0;
-        }
-      }
+      body { margin: 0; color: #172126; font-family: "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif; line-height: 1.7; }
+      main { max-width: 900px; margin: 0 auto; padding: 28px; }
+      h1 { margin: 0 0 6px; font-size: 24px; }
+      h2 { margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #d8dee6; font-size: 18px; }
+      h3 { margin: 0 0 8px; font-size: 15px; }
+      .print-meta { margin: 0; color: #5d6875; font-size: 12px; }
+      .print-text-block, .print-card { border: 1px solid #d8dee6; border-radius: 8px; background: #fafbfc; }
+      .print-text-block { padding: 12px; white-space: pre-wrap; word-break: break-word; }
+      .print-card { break-inside: avoid; margin: 10px 0; padding: 12px; }
+      .print-card p { margin: 8px 0 4px; }
+      @media print { main { padding: 0; } }
     </style>
   </head>
   <body>
     <main>
-      <h1>プロンプト練習 書き出し</h1>
+      <h1>ホテルプロンプト練習 書き出し</h1>
       <p class="print-meta">書き出し日時: ${escapeHtml(report.exportedAt)}</p>
-      <p class="print-meta">演習: ${escapeHtml(report.exerciseType)} / ${escapeHtml(report.title)}</p>
+      <p class="print-meta">練習: ${escapeHtml(report.exerciseType)} / ${escapeHtml(report.title)}</p>
 
       <h2>プロンプト</h2>
-      ${reportTextBlock(report.prompt || "（未入力）")}
+      ${reportTextBlock(report.prompt)}
 
       <h2>AIの回答</h2>
-      ${reportTextBlock(report.assistantReply || "（回答なし）")}
+      ${reportTextBlock(report.assistantReply)}
 
-      <h2>プロンプト改善コメント</h2>
+      <h2>改善コメント</h2>
       <section class="print-card">
         <p><strong>良かった点</strong></p>
         ${reportTextBlock(report.bestPoint)}
         <p><strong>次に直す1点</strong></p>
         ${reportTextBlock(report.priorityFix)}
+        <p><strong>修正ヒント</strong></p>
+        ${reportTextBlock(report.revisionHint)}
         <p><strong>サマリー</strong></p>
         ${reportTextBlock(report.summary)}
-        <p><strong>再実行のヒント</strong></p>
-        ${reportTextBlock(report.revisionHint)}
       </section>
 
-      <h2>5観点フィードバック</h2>
+      <h2>ふり返り</h2>
+      ${reportTextBlock(report.reflection)}
+
+      <h2>観点別コメント</h2>
       ${itemMarkup}
     </main>
   </body>
 </html>`;
 }
 
-function withoutNumericEvaluation(attempt) {
-  if (attempt?.exerciseType !== "basic") {
-    return attempt;
-  }
-
-  const { score, ...exportAttempt } = attempt;
-  if (attempt.evaluation && typeof attempt.evaluation === "object") {
-    exportAttempt.evaluation = {
-      items: Array.isArray(attempt.evaluation.items)
-        ? attempt.evaluation.items.map((item) => ({
-            id: item.id,
-            label: item.label,
-            reason: item.reason,
-            advice: item.advice
-          }))
-        : [],
-      summary: attempt.evaluation.summary || "",
-      bestPoint: attempt.evaluation.bestPoint || "",
-      priorityFix: attempt.evaluation.priorityFix || "",
-      revisionHint: attempt.evaluation.revisionHint || "",
-      nextStep: attempt.evaluation.nextStep || ""
-    };
-  }
-  return exportAttempt;
-}
-
-function exportJson() {
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    activeExerciseType: state.activeExerciseType,
-    activeStepId: state.activeStepId,
-    activeCaseId: state.activeCaseId,
-    currentPrompt: getPromptElement().value,
-    attempts: state.attempts.map(withoutNumericEvaluation)
-  };
-  downloadFile({
-    filename: "prompt-practice-results.json",
-    type: "application/json",
-    content: JSON.stringify(payload, null, 2)
-  });
-  setStatus("JSONを書き出しました");
-}
-
-function getExportTimestamp() {
-  return new Date().toISOString().replace(/[:.]/g, "-");
-}
-
 function getRequiredCurrentReport() {
+  syncReflectionToDraft();
   const report = getCurrentReportData();
   if (!report) {
     setStatus("書き出す結果がありません");
     return null;
   }
   return report;
-}
-
-function exportText() {
-  const report = getRequiredCurrentReport();
-  if (!report) return;
-
-  downloadFile({
-    filename: `prompt-practice-result-${getExportTimestamp()}.txt`,
-    type: "text/plain;charset=utf-8",
-    content: buildTextReport(report),
-    bom: true,
-    crlf: true
-  });
-  setStatus("テキストを書き出しました");
 }
 
 function exportPdf() {
@@ -1156,52 +742,6 @@ function exportPdf() {
   setStatus("印刷画面を開きました");
 }
 
-function csvCell(value) {
-  return `"${String(value ?? "").replace(/"/g, '""')}"`;
-}
-
-function exportCsv() {
-  const rows = [
-    [
-      "createdAt",
-      "exerciseType",
-      "stepId",
-      "caseId",
-      "score",
-      "passed",
-      "prompt",
-      "assistantReply",
-      "bestPoint",
-      "priorityFix",
-      "revisionHint"
-    ],
-    ...state.attempts.map((attempt) => {
-      const isBasicAttempt = attempt.exerciseType === "basic";
-      return [
-        new Date(attempt.createdAt).toISOString(),
-        attempt.exerciseType,
-        attempt.stepId || "",
-        attempt.caseId || "",
-        isBasicAttempt ? "" : attempt.score?.percentage ?? "",
-        isBasicAttempt ? "" : attempt.score?.passed ?? false,
-        attempt.prompt,
-        attempt.assistantReply,
-        attempt.evaluation?.bestPoint || "",
-        attempt.evaluation?.priorityFix || "",
-        attempt.evaluation?.revisionHint || attempt.revisionHint || ""
-      ];
-    })
-  ];
-  downloadFile({
-    filename: "prompt-practice-results.csv",
-    type: "text/csv;charset=utf-8",
-    content: rows.map((row) => row.map(csvCell).join(",")).join("\n"),
-    bom: true,
-    crlf: true
-  });
-  setStatus("CSVを書き出しました");
-}
-
 async function clearHistory() {
   const confirmed = window.confirm("このブラウザの演習履歴をクリアします。よろしいですか？");
   if (!confirmed) return;
@@ -1210,55 +750,41 @@ async function clearHistory() {
     console.error(error);
   });
   state.attempts = [];
-  state.chatMessages = [];
   state.promptDrafts = {};
+  state.reflectionNotes = {};
   state.currentAttempt = null;
   loadPromptForActive();
+  loadReflectionForActive();
   renderAll();
   setStatus("履歴をクリアしました");
 }
 
 function bindEvents() {
-  elements.basicTab.addEventListener("click", () => switchTab("basic"));
-  elements.caseTab.addEventListener("click", () => switchTab("case"));
+  elements.zeroTab.addEventListener("click", () => switchExerciseType("zero-shot"));
+  elements.fewTab.addEventListener("click", () => switchExerciseType("few-shot"));
+  elements.exerciseSelect.addEventListener("change", (event) => switchExercise(event.target.value));
   elements.clearHistoryButton.addEventListener("click", () => {
     void clearHistory();
   });
-  elements.basicPromptInput.addEventListener("input", () => {
-    syncPromptToDraft("basic");
+  elements.promptInput.addEventListener("input", () => {
+    syncPromptToDraft();
     scheduleSaveHistory();
   });
-  elements.casePromptInput.addEventListener("input", () => {
-    syncPromptToDraft("case");
+  elements.reflectionInput.addEventListener("input", () => {
+    syncReflectionToDraft();
     scheduleSaveHistory();
   });
-  elements.useBasicStarterButton.addEventListener("click", () => {
-    elements.basicPromptInput.value = getStarterPrompt("basic", state.activeStepId);
-    syncPromptToDraft("basic");
+  elements.useStarterButton.addEventListener("click", () => {
+    const exercise = getCurrentExercise();
+    elements.promptInput.value = exercise?.starterPrompt || "";
+    syncPromptToDraft();
     setStatus("プロンプト例を入れました");
     scheduleSaveHistory();
   });
-  elements.useCaseStarterButton.addEventListener("click", () => {
-    elements.casePromptInput.value = getStarterPrompt("case", state.activeCaseId);
-    syncPromptToDraft("case");
-    setStatus("プロンプト例を入れました");
-    scheduleSaveHistory();
-  });
-  elements.runBasicButton.addEventListener("click", () => {
-    void runAttempt("basic");
-  });
-  elements.runCaseButton.addEventListener("click", () => {
-    void runAttempt("case");
-  });
-  elements.prevBasicButton.addEventListener("click", () => goToRelativeStep(-1));
-  elements.nextBasicButton.addEventListener("click", () => goToRelativeStep(1));
-  elements.copyPromptButton.addEventListener("click", () => {
-    void copyPrompt();
+  elements.runButton.addEventListener("click", () => {
+    void runAttempt();
   });
   elements.exportPdfButton.addEventListener("click", exportPdf);
-  elements.exportTextButton.addEventListener("click", exportText);
-  elements.exportJsonButton.addEventListener("click", exportJson);
-  elements.exportCsvButton.addEventListener("click", exportCsv);
 }
 
 async function init() {
@@ -1266,21 +792,24 @@ async function init() {
 
   try {
     state.config = await fetchJson("/api/config");
-    state.basicSteps = state.config.basicSteps || state.config.lessons || [];
-    state.caseStudies = state.config.caseStudies || [];
-    state.rubricItems = state.config.rubricItems || [];
+    state.exerciseGroups = Array.isArray(state.config.exerciseGroups)
+      ? state.config.exerciseGroups
+      : [];
     state.selectedModel = state.config.selectedModel || "";
 
-    await loadHistory();
-    if (!getCurrentStep()) {
-      state.activeStepId = state.basicSteps[0]?.id || "";
-    }
-    if (!getCurrentCase()) {
-      state.activeCaseId = state.caseStudies[0]?.id || "";
+    if (!state.exerciseGroups.length) {
+      throw new Error("演習データが見つかりません");
     }
 
-    renderModelOptions();
-    state.currentAttempt = findLatestAttempt();
+    state.activeExerciseType = state.exerciseGroups[0].id;
+    state.activeExerciseId = state.exerciseGroups[0].exercises[0]?.id || "";
+    await loadHistory();
+
+    if (!getCurrentExercise()) {
+      state.activeExerciseType = state.exerciseGroups[0].id;
+      state.activeExerciseId = state.exerciseGroups[0].exercises[0]?.id || "";
+    }
+
     loadPromptForActive();
     renderAll();
   } catch (error) {

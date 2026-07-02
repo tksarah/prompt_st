@@ -14,8 +14,9 @@ import {
 import {
   basicSteps,
   caseStudies,
-  getBasicStepById,
-  getCaseStudyById,
+  exerciseGroups,
+  getExerciseById,
+  getExerciseGroupById,
   getLessonSummaries,
   rubricItems
 } from "./lessons.js";
@@ -29,6 +30,7 @@ const DEFAULT_HISTORY_TTL_MINUTES = 30;
 const SESSION_ARCHIVE_LIMIT = 24;
 const MAX_PROMPT_LENGTH = 8000;
 const MAX_HISTORY_MESSAGE_LENGTH = 4000;
+const VALID_EXERCISE_TYPES = new Set(["zero-shot", "few-shot"]);
 
 function toPositiveNumber(value, fallback) {
   const parsed = Number(value);
@@ -82,6 +84,54 @@ function getHistoryClientId(request) {
   return normalizeClientId(request.query?.clientId) || normalizeClientId(request.body?.clientId);
 }
 
+function defaultExerciseType() {
+  return exerciseGroups[0]?.id || "zero-shot";
+}
+
+function defaultExerciseId(exerciseType = defaultExerciseType()) {
+  const group = getExerciseGroupById(exerciseType) || exerciseGroups[0];
+  return group?.exercises[0]?.id || "";
+}
+
+function normalizeExerciseType(value) {
+  if (value === "zero-shot" || value === "basic") return "zero-shot";
+  if (value === "few-shot" || value === "case") return "few-shot";
+  return "";
+}
+
+function getPromptDraftKeyType(key) {
+  const [type, id] = String(key || "").split(":");
+  const exerciseType = normalizeExerciseType(type);
+  if (exerciseType && getExerciseById(exerciseType, id)) return exerciseType;
+  return "";
+}
+
+function sanitizePromptDrafts(promptDrafts) {
+  if (!promptDrafts || typeof promptDrafts !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(promptDrafts)
+      .filter(([key, value]) => getPromptDraftKeyType(key) && typeof value === "string")
+      .slice(0, 80)
+      .map(([key, value]) => [key, value.slice(0, MAX_PROMPT_LENGTH)])
+  );
+}
+
+function sanitizeReflectionNotes(reflectionNotes) {
+  if (!reflectionNotes || typeof reflectionNotes !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(reflectionNotes)
+      .filter(([key, value]) => getPromptDraftKeyType(key) && typeof value === "string")
+      .slice(0, 80)
+      .map(([key, value]) => [key, value.slice(0, 1200)])
+  );
+}
+
 function sanitizeHistoryMessage(message) {
   if (!message || typeof message !== "object") {
     return null;
@@ -106,57 +156,29 @@ function sanitizeHistoryMessage(message) {
   };
 }
 
-function getPromptDraftKeyType(key) {
-  const [type, id] = String(key || "").split(":");
-  if (type === "basic" && getBasicStepById(id)) return "basic";
-  if (type === "case" && getCaseStudyById(id)) return "case";
-  return "";
-}
-
-function sanitizePromptDrafts(promptDrafts) {
-  if (!promptDrafts || typeof promptDrafts !== "object") {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(promptDrafts)
-      .filter(([key, value]) => getPromptDraftKeyType(key) && typeof value === "string")
-      .slice(0, 80)
-      .map(([key, value]) => [key, value.slice(0, MAX_PROMPT_LENGTH)])
-  );
-}
-
 function inferAttemptExercise(attempt) {
-  if (attempt?.exerciseType === "basic") {
-    const stepId =
-      typeof attempt.stepId === "string"
+  const exerciseType = normalizeExerciseType(attempt?.exerciseType);
+  const exerciseId =
+    typeof attempt?.exerciseId === "string"
+      ? attempt.exerciseId
+      : exerciseType === "zero-shot" && typeof attempt?.stepId === "string"
         ? attempt.stepId
-        : typeof attempt.lessonId === "string"
-          ? attempt.lessonId
-          : "";
-    return getBasicStepById(stepId) ? { exerciseType: "basic", stepId } : null;
+        : exerciseType === "few-shot" && typeof attempt?.caseId === "string"
+          ? attempt.caseId
+          : typeof attempt?.lessonId === "string"
+            ? attempt.lessonId
+            : "";
+
+  if (exerciseType && getExerciseById(exerciseType, exerciseId)) {
+    return { exerciseType, exerciseId };
   }
 
-  if (attempt?.exerciseType === "case") {
-    const caseId =
-      typeof attempt.caseId === "string"
-        ? attempt.caseId
-        : typeof attempt.lessonId === "string"
-          ? attempt.lessonId
-          : "";
-    return getCaseStudyById(caseId) ? { exerciseType: "case", caseId } : null;
+  if (typeof attempt?.stepId === "string" && getExerciseById("zero-shot", attempt.stepId)) {
+    return { exerciseType: "zero-shot", exerciseId: attempt.stepId };
   }
 
-  if (typeof attempt?.stepId === "string" && getBasicStepById(attempt.stepId)) {
-    return { exerciseType: "basic", stepId: attempt.stepId };
-  }
-
-  if (typeof attempt?.caseId === "string" && getCaseStudyById(attempt.caseId)) {
-    return { exerciseType: "case", caseId: attempt.caseId };
-  }
-
-  if (typeof attempt?.lessonId === "string" && getBasicStepById(attempt.lessonId)) {
-    return { exerciseType: "basic", stepId: attempt.lessonId };
+  if (typeof attempt?.caseId === "string" && getExerciseById("few-shot", attempt.caseId)) {
+    return { exerciseType: "few-shot", exerciseId: attempt.caseId };
   }
 
   return null;
@@ -185,6 +207,7 @@ function sanitizeAttempt(attempt) {
         ? attempt.id.slice(0, 120)
         : `attempt-${createdAt}`,
     exerciseType: exercise.exerciseType,
+    exerciseId: exercise.exerciseId,
     prompt,
     assistantReply,
     createdAt,
@@ -196,37 +219,41 @@ function sanitizeAttempt(attempt) {
     provider: typeof attempt.provider === "string" ? attempt.provider : ""
   };
 
-  if (exercise.exerciseType === "case") {
+  if (exercise.exerciseType === "few-shot") {
     return {
       ...base,
-      caseId: exercise.caseId,
-      lessonId: exercise.caseId,
-      scenarioId: exercise.caseId
+      caseId: exercise.exerciseId,
+      lessonId: exercise.exerciseId,
+      scenarioId: exercise.exerciseId
     };
   }
 
   return {
     ...base,
-    stepId: exercise.stepId,
-    lessonId: exercise.stepId,
-    scenarioId: `${exercise.stepId}-scenario`
+    stepId: exercise.exerciseId,
+    lessonId: exercise.exerciseId,
+    scenarioId: `${exercise.exerciseId}-scenario`
   };
 }
 
 function sanitizeHistoryState(state) {
-  const fallbackStepId = basicSteps[0]?.id || "";
-  const fallbackCaseId = caseStudies[0]?.id || "";
-  const activeStepId =
-    typeof state?.activeStepId === "string" && getBasicStepById(state.activeStepId)
-      ? state.activeStepId
-      : typeof state?.activeLessonId === "string" && getBasicStepById(state.activeLessonId)
-        ? state.activeLessonId
-        : fallbackStepId;
-  const activeCaseId =
-    typeof state?.activeCaseId === "string" && getCaseStudyById(state.activeCaseId)
-      ? state.activeCaseId
-      : fallbackCaseId;
-  const activeExerciseType = state?.activeExerciseType === "case" ? "case" : "basic";
+  const fallbackType = defaultExerciseType();
+  const requestedType =
+    normalizeExerciseType(state?.activeExerciseType) ||
+    (typeof state?.activeCaseId === "string" ? "few-shot" : "") ||
+    fallbackType;
+  const activeExerciseType = VALID_EXERCISE_TYPES.has(requestedType) ? requestedType : fallbackType;
+  const requestedExerciseId =
+    typeof state?.activeExerciseId === "string"
+      ? state.activeExerciseId
+      : activeExerciseType === "few-shot" && typeof state?.activeCaseId === "string"
+        ? state.activeCaseId
+        : typeof state?.activeStepId === "string"
+          ? state.activeStepId
+          : "";
+  const activeExerciseId = getExerciseById(activeExerciseType, requestedExerciseId)
+    ? requestedExerciseId
+    : defaultExerciseId(activeExerciseType);
   const attempts = Array.isArray(state?.attempts)
     ? state.attempts.map(sanitizeAttempt).filter(Boolean).slice(0, SESSION_ARCHIVE_LIMIT)
     : [];
@@ -234,112 +261,83 @@ function sanitizeHistoryState(state) {
     ? state.chatMessages.map(sanitizeHistoryMessage).filter(Boolean).slice(-40)
     : [];
   const promptDrafts = sanitizePromptDrafts(state?.promptDrafts);
+  const reflectionNotes = sanitizeReflectionNotes(state?.reflectionNotes);
 
   return {
     activeExerciseType,
-    activeStepId,
-    activeCaseId,
-    activeLessonId: activeStepId,
-    activeScenarioId: `${activeStepId}-scenario`,
+    activeExerciseId,
+    activeStepId: activeExerciseType === "zero-shot" ? activeExerciseId : defaultExerciseId("zero-shot"),
+    activeCaseId: activeExerciseType === "few-shot" ? activeExerciseId : defaultExerciseId("few-shot"),
+    activeLessonId: activeExerciseId,
+    activeScenarioId: `${activeExerciseId}-scenario`,
     attempts,
     chatMessages,
-    promptDrafts
+    promptDrafts,
+    reflectionNotes
   };
 }
 
-function buildBasicExercise(step) {
+function buildExercisePayload(exercise) {
   return {
-    exerciseType: "basic",
-    id: step.id,
-    stepId: step.id,
-    displayLabel: step.displayLabel,
-    title: step.title,
-    shortTitle: step.shortTitle,
-    focus: step.focus,
-    audience: "日常タスク",
-    promptScenario: step.promptScenario,
-    referenceItems: step.referenceItems || [],
-    sourceText: step.sourceText,
-    principles: step.principles || [],
-    evaluationRubricIds: step.evaluationRubricIds || [],
-    checklist: step.successChecklist || [],
+    exerciseType: exercise.exerciseType,
+    id: exercise.id,
+    exerciseId: exercise.id,
+    title: exercise.title,
+    shortTitle: exercise.shortTitle,
+    focus: exercise.focus,
+    promptScenario: exercise.promptScenario,
+    referenceItems: exercise.referenceItems || [],
+    sourceText: exercise.sourceText,
+    examples: exercise.examples || [],
+    principles: exercise.principles || [],
+    evaluationRubricIds: exercise.evaluationRubricIds || [],
+    checklist: exercise.checklist || [],
     nextAction:
-      step.step < basicSteps.length
-        ? `${basicSteps[step.step]?.displayLabel || `STEP${step.step + 1}`}へ進み、精度を上げる観点を試してください。`
-        : "基本演習は完了です。実践演習で1つの業務ケースにまとめて使ってみましょう。"
-  };
-}
-
-function buildCaseExercise(caseStudy) {
-  return {
-    exerciseType: "case",
-    id: caseStudy.id,
-    caseId: caseStudy.id,
-    title: caseStudy.title,
-    shortTitle: caseStudy.shortTitle,
-    focus: caseStudy.focus,
-    audience: caseStudy.audience,
-    promptScenario: caseStudy.promptScenario,
-    referenceItems: caseStudy.referenceItems || [],
-    sourceText: caseStudy.sourceText,
-    principles: ["目的", "成功条件", "制約", "背景", "出力形式"],
-    checklist: caseStudy.checklist || [],
-    nextAction:
-      "ケーススタディの結果を見直し、自分の業務で使うテンプレートとして残してください。"
+      "AI出力を確認し、改善コメントを1つ選んでプロンプトを修正してから再実行してください。"
   };
 }
 
 function getExerciseRubricItems(exercise) {
-  if (exercise?.exerciseType !== "basic") {
-    return rubricItems;
-  }
-
-  const targetIds = Array.isArray(exercise.evaluationRubricIds)
+  const targetIds = Array.isArray(exercise?.evaluationRubricIds)
     ? exercise.evaluationRubricIds
     : [];
-  const targetItems = rubricItems.filter((item) => targetIds.includes(item.id));
-  return targetItems.length > 0 ? targetItems : rubricItems;
+  const targetItems = targetIds
+    .map((id) => rubricItems.find((item) => item.id === id))
+    .filter(Boolean);
+  return targetItems.length > 0 ? targetItems : rubricItems.slice(0, 5);
 }
 
 function resolveAttemptExercise(body) {
-  const requestedType =
-    body?.exerciseType === "basic" || body?.exerciseType === "case" ? body.exerciseType : "";
+  const requestedType = normalizeExerciseType(body?.exerciseType);
 
   if (body?.exerciseType && !requestedType) {
     return { error: "exerciseType is invalid" };
   }
 
-  if (requestedType === "case" || (!requestedType && typeof body?.caseId === "string")) {
-    const caseId =
-      typeof body?.caseId === "string"
+  const exerciseType =
+    requestedType ||
+    (typeof body?.caseId === "string" ? "few-shot" : "") ||
+    (typeof body?.stepId === "string" ? "zero-shot" : "");
+
+  if (!exerciseType) {
+    return { error: "exerciseType is required" };
+  }
+
+  const exerciseId =
+    typeof body?.exerciseId === "string"
+      ? body.exerciseId
+      : exerciseType === "few-shot" && typeof body?.caseId === "string"
         ? body.caseId
-        : typeof body?.lessonId === "string"
-          ? body.lessonId
-          : "";
-    const caseStudy = getCaseStudyById(caseId);
-    return caseStudy ? { exercise: buildCaseExercise(caseStudy) } : { error: "caseId is invalid" };
-  }
+        : exerciseType === "zero-shot" && typeof body?.stepId === "string"
+          ? body.stepId
+          : typeof body?.lessonId === "string"
+            ? body.lessonId
+            : "";
 
-  if (requestedType === "basic" || (!requestedType && typeof body?.stepId === "string")) {
-    const stepId =
-      typeof body?.stepId === "string"
-        ? body.stepId
-        : typeof body?.lessonId === "string"
-          ? body.lessonId
-          : "";
-    const step = getBasicStepById(stepId);
-    return step ? { exercise: buildBasicExercise(step) } : { error: "stepId is invalid" };
-  }
-
-  if (typeof body?.lessonId === "string") {
-    const step = getBasicStepById(body.lessonId);
-    if (step) return { exercise: buildBasicExercise(step) };
-    const caseStudy = getCaseStudyById(body.lessonId);
-    if (caseStudy) return { exercise: buildCaseExercise(caseStudy) };
-    return { error: "lessonId is invalid" };
-  }
-
-  return { error: "stepId is invalid" };
+  const exercise = getExerciseById(exerciseType, exerciseId);
+  return exercise
+    ? { exercise: buildExercisePayload(exercise) }
+    : { error: "exerciseId is invalid" };
 }
 
 function buildAttemptMessages({ prompt }) {
@@ -347,7 +345,7 @@ function buildAttemptMessages({ prompt }) {
     {
       role: "system",
       content:
-        "You are the AI assistant inside a Japanese prompt-practice exercise. Follow only the learner's prompt below. Respond in Japanese unless the prompt explicitly asks otherwise. If required information is missing, ask concise clarification questions instead of inventing facts."
+        "You are the AI assistant inside a Japanese prompt-practice exercise for hospitality students. Follow only the learner's prompt below. Respond in Japanese unless the learner asks otherwise. Do not invent hotel policies, prices, availability, private information, or confirmed outcomes. If required information is missing, ask concise clarification questions or mark it as something to confirm."
     },
     {
       role: "user",
@@ -366,28 +364,28 @@ function buildEvaluationMessages({
     {
       role: "system",
       content:
-        "あなたは生成AI研修のプロンプト評価者です。OpenAIのプロンプト指針に沿って、明確な目的、成功条件、制約、背景、出力形式を評価します。必ずJSONオブジェクトのみを返してください。"
+        "あなたはホテル専門学生向けAI活用授業のプロンプト評価者です。学生が社会に出て安全にAIを使えるよう、目的、背景、制約、出力形式、接客品質、Few-Shotの例の使い方を評価します。必ずJSONオブジェクトのみを返してください。"
     },
     {
       role: "user",
       content: JSON.stringify(
         {
           task:
-            "次の受講者プロンプトを0-4点で評価し、改善に使える短い助言を日本語で返してください。",
+            "次の学生プロンプトを0-4点で評価し、点数よりも改善に使える短い助言を日本語で返してください。",
           outputSchema: {
             items: activeRubricItems.map((item) => ({
               id: item.id,
               score: "0から4の整数",
-              reason: "日本語で1文",
-              advice: "日本語で1文"
+              reason: "日本語で1文。現状をやさしく説明する",
+              advice: "日本語で1文。次に足すとよい具体的な指定を書く"
             })),
-            summary: "日本語で2文以内",
+            summary: "日本語で2文以内。点数を強調しない",
             bestPoint: "最も良かった点を日本語で1文",
             priorityFix: "最優先で直す点を日本語で1文",
             revisionHint: "次に直すべきことを日本語で1から2文",
             nextStep: "次の演習行動を日本語で1文"
           },
-          passRule: "合計70%以上、かつ0点項目がない場合に合格。",
+          passRule: "合計70%以上、かつ0点項目がない場合に晴れ。35%以上は曇り。それ未満は雨。",
           exercise,
           rubricItems: activeRubricItems,
           learnerPrompt: prompt,
@@ -403,56 +401,83 @@ function buildEvaluationMessages({
 function getScoreBySignals(prompt, signals, fallbackScore = 1) {
   const text = prompt.toLowerCase();
   const matches = signals.filter((signal) => text.includes(signal.toLowerCase())).length;
-  if (matches >= 3) return 4;
-  if (matches === 2) return 3;
+  if (matches >= 4) return 4;
+  if (matches >= 2) return 3;
   if (matches === 1) return 2;
   return fallbackScore;
 }
 
 function createHeuristicEvaluation({ exercise, prompt }) {
   const signalsByItem = {
-    goal: ["goal", "目的", "作って", "整理", "要約", "レビュー", "洗い出し", "案内", "直して"],
-    success: ["success criteria", "成功条件", "条件", "判断", "分かる", "含める", "できる"],
+    goal: [
+      "goal",
+      "目的",
+      "作って",
+      "作成",
+      "返信",
+      "案内",
+      "口コミ",
+      "faq",
+      "メール",
+      "チャット"
+    ],
     context: [
       "context",
       "背景",
-      "読み手",
-      "対象",
-      "利用場面",
-      "友人",
-      "チーム",
-      "会議",
-      "顧客",
-      "社内"
+      "お客様",
+      "宿泊",
+      "滞在",
+      "口コミ",
+      "チェックイン",
+      "フロント",
+      "場面",
+      "客室"
     ],
     constraints: [
       "constraints",
       "制約",
-      "禁止",
-      "避け",
       "断定しない",
       "作らない",
-      "不足",
+      "個人情報",
+      "確認",
+      "未確認",
       "以内",
-      "予算"
+      "禁止",
+      "避け",
+      "料金",
+      "空室"
     ],
-    output: ["output", "出力", "形式", "表", "箇条書き", "文字", "トーン", "件名"]
-  };
-
-  const exerciseBoosts = {
-    "basic-core": ["goal", "success", "constraints", "context", "output"],
-    "case-meeting": ["goal", "success", "constraints", "context", "output"],
-    "case-request": ["goal", "success", "constraints", "context", "output"],
-    "case-proposal": ["goal", "success", "constraints", "context", "output"]
+    output: [
+      "output",
+      "出力",
+      "形式",
+      "字以内",
+      "本文",
+      "表",
+      "箇条書き",
+      "回答文",
+      "返信文",
+      "a:"
+    ],
+    hospitality: [
+      "丁寧",
+      "安心",
+      "誠実",
+      "お詫び",
+      "感謝",
+      "接客",
+      "ホテル",
+      "フロント",
+      "お客様",
+      "親切"
+    ],
+    examples: ["例", "まね", "同じ", "few", "shot", "q:", "a:", "型", "参考"],
+    consistency: ["同じ型", "同じ構成", "同じ丁寧", "一貫", "型", "トーン", "文体", "短さ", "構成"]
   };
 
   const activeRubricItems = getExerciseRubricItems(exercise);
-  const boosted = new Set(exerciseBoosts[exercise.id] || []);
   const items = activeRubricItems.map((item) => {
-    const score = Math.min(
-      4,
-      getScoreBySignals(prompt, signalsByItem[item.id] || [], boosted.has(item.id) ? 2 : 1)
-    );
+    const score = getScoreBySignals(prompt, signalsByItem[item.id] || [], 1);
     return {
       id: item.id,
       label: item.label,
@@ -461,11 +486,11 @@ function createHeuristicEvaluation({ exercise, prompt }) {
       reason:
         score >= 3
           ? `${item.label}の指定が読み取れます。`
-          : `${item.label}の指定がまだ弱く、回答のぶれを減らす余地があります。`,
+          : `${item.label}の指定がまだ弱く、AIの出力がぶれる可能性があります。`,
       advice:
         score >= 3
-          ? "この観点は維持し、ほかの不足項目を補ってください。"
-          : `${item.label}を短い1文で明示すると、回答が安定します。`
+          ? "この観点は残し、ほかに不足している指定を1つだけ足しましょう。"
+          : `${item.label}を短い1文でプロンプトに足すと、より安定します。`
     };
   });
 
@@ -473,17 +498,15 @@ function createHeuristicEvaluation({ exercise, prompt }) {
     {
       items,
       summary:
-        exercise.exerciseType === "basic"
-          ? "この演習の観点だけで確認しました。まずは指定された型に集中して整えましょう。"
-          : "モック評価です。実際のAPIキー利用時は、回答内容も含めてより細かく評価します。",
+        exercise.exerciseType === "few-shot"
+          ? "Few-Shotの例をどう使わせるかを中心に確認しました。例と同じ型にする指定をさらに明確にするとよくなります。"
+          : "Zero-Shotの基本指定を中心に確認しました。目的、背景、制約、出力形式を1つずつ足すと整います。",
       bestPoint:
-        "狙いが書かれているため、AIが何を返せばよいか判断しやすくなっています。",
+        "ホテルの場面を意識してAIに依頼しようとしている点が良いです。",
       priorityFix:
-        "点数が低い観点を1つ選び、プロンプトに短い条件として追記してください。",
+        "最も弱い観点を1つ選び、AIに守ってほしい条件として短く追記してください。",
       revisionHint:
-        exercise.exerciseType === "basic"
-          ? "この演習の観点が伝わるように、プロンプトの該当箇所を短く書き足してください。"
-          : "Role / Goal / Success criteria / Context / Constraints / Output のうち、不足している1項目を足して再実行してください。",
+        "次はプロンプトに『未確認情報は断定しない』または『同じ型で出す』など、出力を安定させる条件を1つ足して再実行しましょう。",
       nextStep: exercise.nextAction
     },
     activeRubricItems
@@ -534,7 +557,7 @@ function normalizeEvaluation(parsed, activeRubricItems = rubricItems) {
 
   const total = items.reduce((sum, item) => sum + item.score, 0);
   const max = items.reduce((sum, item) => sum + item.maxScore, 0);
-  const percentage = Math.round((total / max) * 100);
+  const percentage = max > 0 ? Math.round((total / max) * 100) : 0;
   const zeroScoreItems = items.filter((item) => item.score === 0).map((item) => item.id);
 
   return {
@@ -555,11 +578,11 @@ function normalizeEvaluation(parsed, activeRubricItems = rubricItems) {
     priorityFix:
       typeof parsed.priorityFix === "string" && parsed.priorityFix.trim()
         ? parsed.priorityFix.trim()
-        : "最も低い採点項目を1つ選び、具体的な指定を追記してください。",
+        : "最も弱い観点を1つ選び、具体的な指定を追記してください。",
     revisionHint:
       typeof parsed.revisionHint === "string" && parsed.revisionHint.trim()
         ? parsed.revisionHint.trim()
-        : "低い点数の観点を1つ選び、プロンプトに追記してください。",
+        : "弱い観点を1つ選び、プロンプトに追記してもう一度実行してください。",
     nextStep:
       typeof parsed.nextStep === "string" && parsed.nextStep.trim()
         ? parsed.nextStep.trim()
@@ -682,10 +705,11 @@ export function createApp({ env = process.env } = {}) {
   app.get("/api/config", (_request, response) => {
     response.json({
       ...runtimeConfig,
+      exerciseGroups,
+      rubricItems,
       basicSteps,
       caseStudies,
-      lessons: getLessonSummaries(),
-      rubricItems
+      lessons: getLessonSummaries()
     });
   });
 
@@ -817,12 +841,18 @@ export function createApp({ env = process.env } = {}) {
       });
       const createdAt = Date.now();
       const identity =
-        exercise.exerciseType === "case"
-          ? { caseId: exercise.caseId, lessonId: exercise.caseId, scenarioId: exercise.caseId }
+        exercise.exerciseType === "few-shot"
+          ? {
+              exerciseId: exercise.exerciseId,
+              caseId: exercise.exerciseId,
+              lessonId: exercise.exerciseId,
+              scenarioId: exercise.exerciseId
+            }
           : {
-              stepId: exercise.stepId,
-              lessonId: exercise.stepId,
-              scenarioId: `${exercise.stepId}-scenario`
+              exerciseId: exercise.exerciseId,
+              stepId: exercise.exerciseId,
+              lessonId: exercise.exerciseId,
+              scenarioId: `${exercise.exerciseId}-scenario`
             };
 
       response.json({
@@ -854,6 +884,6 @@ if (process.argv[1] === currentFile) {
   const port = Number(process.env.PORT || 3000);
   const app = createApp();
   app.listen(port, () => {
-    console.log(`プロンプト練習アプリを起動しました: http://localhost:${port}`);
+    console.log(`ホテルプロンプト練習アプリを起動しました: http://localhost:${port}`);
   });
 }

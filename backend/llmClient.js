@@ -61,7 +61,10 @@ export function resolveModel(env, requestedModel) {
 }
 
 export function isMockMode(env) {
-  return String(env.USE_MOCK_LLM || "false").toLowerCase() === "true";
+  const configuredValue = String(env.USE_MOCK_LLM || "").toLowerCase();
+  if (configuredValue === "true") return true;
+  if (configuredValue === "false") return false;
+  return !env.OPENAI_API_KEY && !env.GEMINI_API_KEY;
 }
 
 export function createMockReply(messages) {
