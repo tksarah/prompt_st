@@ -201,6 +201,7 @@ textarea:disabled {
 }
 
 .start-card {
+  align-self: stretch;
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--border);
@@ -254,7 +255,7 @@ textarea:disabled {
 
 .start-card-continue {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .practice-steps {
