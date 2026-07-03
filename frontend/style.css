@@ -145,6 +145,7 @@ textarea:disabled {
 }
 
 .mode-tab {
+  position: relative;
   display: grid;
   gap: 5px;
   align-content: start;
@@ -158,10 +159,26 @@ textarea:disabled {
 }
 
 .mode-tab.active {
-  background: var(--surface);
-  border-color: rgba(13, 118, 109, 0.32);
+  background: #fff;
+  border-color: rgba(13, 118, 109, 0.62);
   color: var(--text);
-  box-shadow: 0 3px 10px rgba(23, 33, 38, 0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(13, 118, 109, 0.2),
+    0 4px 12px rgba(23, 33, 38, 0.1);
+}
+
+.mode-tab.active::after {
+  content: "選択中";
+  justify-self: start;
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 850;
+  line-height: 1.5;
+  order: -1;
 }
 
 .mode-tab-title {
@@ -243,6 +260,36 @@ textarea:disabled {
   line-height: 1.55;
 }
 
+.selection-summary {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(13, 118, 109, 0.22);
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+
+.selection-summary-label {
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.selection-summary-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 850;
+  line-height: 1.45;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
 .start-card .mode-tabs,
 .start-exercise-picker {
   margin-top: 12px;
@@ -256,6 +303,23 @@ textarea:disabled {
 .start-card-continue {
   display: flex;
   align-items: flex-start;
+}
+
+.selection-updated {
+  animation: selection-update-pulse 850ms ease;
+}
+
+@keyframes selection-update-pulse {
+  0% {
+    border-color: rgba(13, 118, 109, 0.72);
+    outline: 3px solid rgba(13, 118, 109, 0.26);
+    outline-offset: 1px;
+  }
+
+  100% {
+    outline: 0 solid rgba(13, 118, 109, 0);
+    outline-offset: 7px;
+  }
 }
 
 .practice-steps {
@@ -728,6 +792,13 @@ select:focus-visible,
   .loading::before {
     animation: none;
     border-color: rgba(13, 118, 109, 0.32);
+  }
+
+  .selection-updated {
+    animation: none;
+    border-color: rgba(13, 118, 109, 0.72);
+    outline: 3px solid rgba(13, 118, 109, 0.22);
+    outline-offset: 1px;
   }
 }
 

@@ -12,11 +12,17 @@ const modeDescriptionFallbacks = {
 };
 
 const elements = {
+  startTypeCard: document.getElementById("startTypeCard"),
+  startExerciseCard: document.getElementById("startExerciseCard"),
+  startContinueCard: document.getElementById("startContinueCard"),
   zeroTab: document.getElementById("zeroTab"),
   fewTab: document.getElementById("fewTab"),
   zeroTabDescription: document.getElementById("zeroTabDescription"),
   fewTabDescription: document.getElementById("fewTabDescription"),
+  selectionType: document.getElementById("selectionType"),
+  selectionExercise: document.getElementById("selectionExercise"),
   clearHistoryButton: document.getElementById("clearHistoryButton"),
+  exercisePanel: document.querySelector(".exercise-panel"),
   exerciseTypeLabel: document.getElementById("exerciseTypeLabel"),
   exerciseTitle: document.getElementById("exerciseTitle"),
   exerciseFocus: document.getElementById("exerciseFocus"),
@@ -61,6 +67,8 @@ const state = {
 };
 
 let saveTimer = null;
+const selectionHighlightMs = 850;
+const selectionHighlightTimers = new WeakMap();
 
 function getOrCreateClientId() {
   const existingClientId = localStorage.getItem(clientIdStorageKey);
@@ -263,6 +271,33 @@ function getCurrentExercise() {
   return group?.exercises.find((exercise) => exercise.id === state.activeExerciseId) || null;
 }
 
+function renderSelectionSummary() {
+  const group = getCurrentGroup();
+  const exercise = getCurrentExercise();
+  elements.selectionType.textContent = group?.label || "";
+  elements.selectionExercise.textContent = exercise?.shortTitle || exercise?.title || "";
+}
+
+function highlightSelectionChange(targets) {
+  for (const element of targets.filter(Boolean)) {
+    const timer = selectionHighlightTimers.get(element);
+    if (timer) {
+      window.clearTimeout(timer);
+    }
+
+    element.classList.remove("selection-updated");
+    void element.offsetWidth;
+    element.classList.add("selection-updated");
+    selectionHighlightTimers.set(
+      element,
+      window.setTimeout(() => {
+        element.classList.remove("selection-updated");
+        selectionHighlightTimers.delete(element);
+      }, selectionHighlightMs)
+    );
+  }
+}
+
 function getDraftKey(type = state.activeExerciseType, id = state.activeExerciseId) {
   return `${type}:${id}`;
 }
@@ -457,6 +492,7 @@ function renderExerciseContent() {
   elements.hintText.textContent = exercise.hint || "";
 
   renderExerciseSelect();
+  renderSelectionSummary();
   renderReferenceInfo(exercise);
   renderExamples(exercise);
   renderPrinciples(exercise.principles || []);
@@ -562,6 +598,12 @@ function switchExerciseType(type) {
   state.activeExerciseId = group?.exercises[0]?.id || "";
   loadPromptForActive();
   renderAll();
+  highlightSelectionChange([
+    elements.startTypeCard,
+    elements.startExerciseCard,
+    elements.startContinueCard,
+    elements.exercisePanel
+  ]);
   scheduleSaveHistory();
 }
 
@@ -573,6 +615,11 @@ function switchExercise(exerciseId) {
   state.activeExerciseId = exerciseId;
   loadPromptForActive();
   renderAll();
+  highlightSelectionChange([
+    elements.startExerciseCard,
+    elements.startContinueCard,
+    elements.exercisePanel
+  ]);
   scheduleSaveHistory();
 }
 
