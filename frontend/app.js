@@ -6,10 +6,16 @@ import {
 
 const clientIdStorageKey = "hotelPromptPractice.clientId.v1";
 const historyLimit = 24;
+const modeDescriptionFallbacks = {
+  "zero-shot": "例を入れず、目的・背景・制約・出力形式を整理してAIに依頼します。",
+  "few-shot": "良い例を示し、同じ型やトーンでAIに新しい出力を作らせます。"
+};
 
 const elements = {
   zeroTab: document.getElementById("zeroTab"),
   fewTab: document.getElementById("fewTab"),
+  zeroTabDescription: document.getElementById("zeroTabDescription"),
+  fewTabDescription: document.getElementById("fewTabDescription"),
   clearHistoryButton: document.getElementById("clearHistoryButton"),
   exerciseTypeLabel: document.getElementById("exerciseTypeLabel"),
   exerciseTitle: document.getElementById("exerciseTitle"),
@@ -247,6 +253,11 @@ function getCurrentGroup() {
   return state.exerciseGroups.find((group) => group.id === state.activeExerciseType) || null;
 }
 
+function getGroupDescription(type) {
+  const group = state.exerciseGroups.find((item) => item.id === type);
+  return group?.description || modeDescriptionFallbacks[type] || "";
+}
+
 function getCurrentExercise() {
   const group = getCurrentGroup();
   return group?.exercises.find((exercise) => exercise.id === state.activeExerciseId) || null;
@@ -337,6 +348,8 @@ function renderTabs() {
   elements.fewTab.classList.toggle("active", isFewShot);
   elements.zeroTab.setAttribute("aria-selected", String(!isFewShot));
   elements.fewTab.setAttribute("aria-selected", String(isFewShot));
+  elements.zeroTabDescription.textContent = getGroupDescription("zero-shot");
+  elements.fewTabDescription.textContent = getGroupDescription("few-shot");
 }
 
 function renderExerciseSelect() {
